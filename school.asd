@@ -1,0 +1,11 @@
+;; the application manager of the school suit of applications.
+;; all applications will have dedicated windows and have processes as children of the main process.
+;; all applications will share a single database and main window.
+;; we shall add applications to the suite with time.
+;; designed with ltk and sqlite3 as the database.
+
+(defsystem "school"
+  :author "Ninx technology limited"
+  :description "The application manager for the school application"
+  :depends-on (:ltk :sqlite)
+  :components ((:file "school")))

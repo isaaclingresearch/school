@@ -1,0 +1,5 @@
+(defsystem "school"
+  :author "Ninx technology limited"
+  :description "The core application to all the school suite applications. Manages the data, has a server that can be accessed by the respective applications. uses sqlite3 to manage the data"
+  :depends-on (:hunchentoot :sqlite)
+  :components ((:file "school")))
