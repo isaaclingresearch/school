@@ -3,9 +3,12 @@
 ;; all applications will share a single database and main window.
 ;; we shall add applications to the suite with time.
 ;; designed with ltk and sqlite3 as the database.
+;; special thanks to the creators of ltk and sqlite and those of sbcl and those of lisp.
+;; we will use the power for good.
 
 (defsystem "school"
   :author "Ninx technology limited"
   :description "The application manager for the school application"
   :depends-on (:ltk :sqlite)
-  :components ((:file "school")))
+  :components ((:file "info")
+	       (:file "school")))
