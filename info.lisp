@@ -16,8 +16,8 @@
 ;; DB ACCESS FUNCTIONS
 
 (defun create-tables ()
-;  (execute-non-query *db* "create table levels (id INTEGER PRIMARY KEY, level TEXT, added_on DEFAULT CURRENT_TIMESTAMP)")
- ; (execute-non-query *db* "create table classes (id INTEGER PRIMARY KEY, class TEXT, added_on DEFAULT CURRENT_TIMESTAMP)")
+  (execute-non-query *db* "create table levels (id INTEGER PRIMARY KEY, level TEXT, added_on DEFAULT CURRENT_TIMESTAMP)")
+ (execute-non-query *db* "create table classes (id INTEGER PRIMARY KEY, class TEXT, added_on DEFAULT CURRENT_TIMESTAMP)")
   (execute-non-query *db* "create table streams (id INTEGER PRIMARY KEY, class TEXT, stream TEXT, added_on DEFAULT CURRENT_TIMESTAMP)")
   )
 
@@ -186,29 +186,37 @@
     (grid save-button 2 2 :pady 10)))
 
 (defun show-add-class-form (&optional class-text)
-  "collect and process data about classes"
-  (unless (null *school-info-main-frame*)
-    (ltk:destroy *school-info-main-frame*))
-  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (let* (
-	 (class-label (make-instance 'label :master *school-info-main-frame* :text "Enter Class Name"))
-	 (class-entry (make-instance 'entry :master *school-info-main-frame* :text class-text))
-	 (save-button (make-instance 'button :master *school-info-main-frame*
-					     :text "Save Class" :command (lambda ()
-									   (if class-text
-									       (update-class class-text (text class-entry))
-									       (save-class (text class-entry)))
-									   (create-menubar)
-									   (destroy *school-info-main-frame*)
-									   (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-									   (grid *school-info-main-frame* 0 0)
-									   (grid (make-instance 'label :master *school-info-main-frame* :text "The class has been saved.") 1 0)))))
-    (grid *school-info-main-frame* 0 0)
-    (grid-columnconfigure *tk* 0 :weight 1) 
-    (grid-rowconfigure *tk* 0 :weight 1)
-    (grid class-label 1 0 :padx 10 :pady 5)
-    (grid class-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
-    (grid save-button 2 2 :pady 10)))
+  "collect and process data about classes
+   the form has a dropdown list of levels to choose from, shows an error if no levels are present."
+  (let ((level)
+	(levels (get-levels)))   
+    (unless (null *school-info-main-frame*)
+      (ltk:destroy *school-info-main-frame*))
+    (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+    (let* (
+	   (level-label (make-instance 'label :master *school-info-main-frame* :text "Select Level"))
+	   (level-combobox (make-instance 'combobox :text (caar levels) :master *school-info-main-frame* :values (mapcar (lambda (x) (car x)) levels)))
+	   (class-label (make-instance 'label :master *school-info-main-frame* :text "Enter Class Name"))
+	   (class-entry (make-instance 'entry :master *school-info-main-frame* :text class-text))
+	   (save-button (make-instance 'button :master *school-info-main-frame*
+					       :text "Save Class" :command (lambda ()
+									     (if class-text
+										 (update-class class-text (text class-entry))
+										 (save-class (text class-entry)))
+									     (create-menubar)
+									     (destroy *school-info-main-frame*)
+									     (format *standard-output* "~a" (text level-combobox))
+									     (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+									     (grid *school-info-main-frame* 0 0)
+									     (grid (make-instance 'label :master *school-info-main-frame* :text "The class has been saved.") 1 0)))))
+      (grid *school-info-main-frame* 0 0)
+      (grid-columnconfigure *tk* 0 :weight 1) 
+      (grid-rowconfigure *tk* 0 :weight 1)
+      (grid level-label 0 0 :padx 10 :pady 5)
+      (grid level-combobox 0 2 :padx 10 :pady 5)
+      (grid class-label 1 0 :padx 10 :pady 5)
+      (grid class-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
+      (grid save-button 2 2 :pady 10))))
 
 (defun show-add-stream-form (&optional class-text stream-text )
   "collect and process data about streams"
