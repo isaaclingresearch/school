@@ -17,16 +17,16 @@
 
 (defun create-tables ()
   (execute-non-query *db* "create table levels (id INTEGER PRIMARY KEY, level TEXT UNIQUE, added_on DEFAULT CURRENT_TIMESTAMP)")
-  (execute-non-query *db* "create table classes (id INTEGER PRIMARY KEY, class TEXT UNIQUE,  level TEXT, added_on DEFAULT CURRENT_TIMESTAMP)")
-  (execute-non-query *db* "create table streams (id INTEGER PRIMARY KEY, class TEXT, stream TEXT UNIQUE, added_on DEFAULT CURRENT_TIMESTAMP)")
+  (execute-non-query *db* "create table classes (id INTEGER PRIMARY KEY, class TEXT UNIQUE,  level_id INTEGER, added_on DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(level_id) REFERENCES levels(id))")
+  (execute-non-query *db* "create table streams (id INTEGER PRIMARY KEY, class_id INTEGER, stream TEXT UNIQUE, added_on DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(class_id) REFERENCES classes(id))")
   (execute-non-query *db* "create table houses (id INTEGER PRIMARY KEY, house TEXT UNIQUE, added_on DEFAULT CURRENT_TIMESTAMP)")
   ;; use stream is to ensure uniqueness as different classes can have the same stream
-  (execute-non-query *db* "create table subjects (id INTEGER PRIMARY KEY, subject TEXT UNIQUE, stream_id INTEGER, added_on DEFAULT CURRENT_TIMESTAMP)")
+  (execute-non-query *db* "create table subjects (id INTEGER PRIMARY KEY, subject TEXT UNIQUE, stream_id INTEGER, added_on DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(stream_id) REFERENCES streams(id))")
   )
 
 ;; LEVEL FUNCTIONS
 (defun get-levels ()
-  (execute-to-list *db* "select level from levels"))
+  (execute-to-list *db* "select level, id from levels"))
 
 (defun save-level (level)
   (execute-non-query *db* "insert into levels (level) values (?)" level))
@@ -38,13 +38,13 @@
   (execute-non-query *db* "delete from levels where level = ?" level))
 
 ;; CLASS FUNCTIONS
-(defun get-classes (&optional level)
-  (if level
-      (execute-to-list *db* "select class from classes where level = ?" level)
-      (execute-to-list *db* "select class, level from classes")))
+(defun get-classes (&optional level-id)
+  (if level-id
+      (execute-to-list *db* "select class from classes where level_id = ?" level-id)
+      (execute-to-list *db* "select class, level_id from classes")))
 
-(defun save-class (level class)
-  (execute-non-query *db* "insert into classes (level, class) values (?, ?)" level class))
+(defun save-class (level-id class)
+  (execute-non-query *db* "insert into classes (level_id, class) values (?, ?)" level-id class))
 
 (defun update-class (class new-class)
   (execute-non-query *db* "update classes set class = ? where class = ?" new-class class))
@@ -56,19 +56,19 @@
   (format-wish "wm iconbitmap . ~a" path-to-icon))					
 
 ;; STREAM FUNCTIONS
-(defun get-streams (&optional class)
-  (if class
-      (execute-to-list *db* "select stream, id from streams where class = ?" class)
-      (execute-to-list *db* "select stream, class, id from streams")))
+(defun get-streams (&optional class-id)
+  (if class-id
+      (execute-to-list *db* "select stream, id from streams where class_id = ?" class-id)
+      (execute-to-list *db* "select stream, class_id, id from streams")))
 
-(defun save-stream (class stream)
-  (execute-non-query *db* "insert into streams (class, stream) values (?, ?)" class stream))
+(defun save-stream (class-id stream)
+  (execute-non-query *db* "insert into streams (class_id, stream) values (?, ?)" class-id stream))
 
-(defun update-stream (class new-stream stream)
-  (execute-non-query *db* "update streams set stream = ? where class = ? and stream = ?" new-stream class stream))
+(defun update-stream (class-id new-stream stream)
+  (execute-non-query *db* "update streams set stream = ? where class_id = ? and stream = ?" new-stream class-id stream))
 
-(defun delete-stream (class stream)
-  (execute-non-query *db* "delete from streams where class = ? and stream = ?" class stream))
+(defun delete-stream (class-id stream)
+  (execute-non-query *db* "delete from streams where class_id = ? and stream = ?" class-id stream))
 
 ;; HOUSE FUNCTIONS
 (defun get-houses ()
