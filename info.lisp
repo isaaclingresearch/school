@@ -1,7 +1,7 @@
 ;;; this defines the application for handling general school information.
 ;;; general school information means the basic structure of the school.
 
-;;; TOOD run the function to create tables on start, if db is already present, don't run those functions.
+;;; TOOD use foreign keys in the tables to ensure data integrity
 (defpackage :school-info
   (:use :cl :ltk :sqlite)
   (:export :start :create-tables))
@@ -38,11 +38,13 @@
   (execute-non-query *db* "delete from levels where level = ?" level))
 
 ;; CLASS FUNCTIONS
-(defun get-classes ()
-  (execute-to-list *db* "select class from classes"))
+(defun get-classes (&optional level)
+  (if level
+      (execute-to-list *db* "select class from classes where level = ?" level)
+      (execute-to-list *db* "select class, level from classes")))
 
-(defun save-class (class)
-  (execute-non-query *db* "insert into classes (class) values (?)" class))
+(defun save-class (level class)
+  (execute-non-query *db* "insert into classes (level, class) values (?, ?)" level class))
 
 (defun update-class (class new-class)
   (execute-non-query *db* "update classes set class = ? where class = ?" new-class class))
@@ -54,8 +56,10 @@
   (format-wish "wm iconbitmap . ~a" path-to-icon))					
 
 ;; STREAM FUNCTIONS
-(defun get-streams ()
-  (execute-to-list *db* "select stream, class, id from streams"))
+(defun get-streams (&optional class)
+  (if class
+      (execute-to-list *db* "select stream, id from streams where class = ?" class)
+      (execute-to-list *db* "select stream, class, id from streams")))
 
 (defun save-stream (class stream)
   (execute-non-query *db* "insert into streams (class, stream) values (?, ?)" class stream))
@@ -114,11 +118,11 @@
     (setq *menubar* menubar)
     ;; add elements to the menus.
     ;; LEVEL MENUS
-    (make-instance 'menubutton :master level-menu :text "New" :command (lambda () (show-add-level-form)))
+    (make-instance 'menubutton :master level-menu :text "New" :command (lambda () (level-form)))
     (let ((edit-level-menu (make-instance 'menu :master level-menu :text "Edit")))
       ;; for the edit-level-menu, make each saved level a button of the menu
       (dolist (level (get-levels))
-	(make-instance 'menubutton :master edit-level-menu :text (car level) :command (lambda () (show-add-level-form (car level))))))
+	(make-instance 'menubutton :master edit-level-menu :text (car level) :command (lambda () (level-form (car level))))))
     ;; add buttons do delete all level to the delete level menu
     ;; that adds extra complexicity to the datastore because we need versioning to ensure data integrity
     (let ((delete-level-menu (make-instance 'menu :master level-menu :text "Delete")))
@@ -136,11 +140,17 @@
 					      ))))
 
     ;; CLASSES MENU
-    (make-instance 'menubutton :master class-menu :text "New" :command (lambda () (show-add-class-form)))
-    (let ((edit-class-menu (make-instance 'menu :master class-menu :text "Edit")))
-      ;; for the edit-class-menu, make each saved level a button of the menu
-      (dolist (class (get-classes))
-	(make-instance 'menubutton :master edit-class-menu :text (car class) :command (lambda () (show-add-class-form (car class))))))
+    (make-instance 'menubutton :master class-menu :text "New" :command (lambda () (class-form)))
+    (let ((edit-class-menu (make-instance 'menu :master class-menu :text "Edit"))
+	  (levels (get-levels)))
+      ;; get all levels, then classes of a certain level,
+      ;; display levels as menus with classes as menubuttons with command to edit class.
+      (dolist (level levels)
+	(let* ((level-name (car level))
+	       (level-menu (make-instance 'menu :master edit-class-menu :text level-name))
+	      (classes (get-classes level-name)))
+	  (dolist (class classes)
+	    (make-instance 'menubutton :master level-menu :text (car class) :command (lambda () (class-form (car class))))))))
     ;; add buttons do delete all level to the delete class menu
     ;; that adds extra complexicity to the datastore because we need versioning to ensure data integrity
     (let ((delete-class-menu (make-instance 'menu :master class-menu :text "Delete")))
@@ -159,11 +169,16 @@
 
     ;; STREAMS MENU
     ;; for the new stream, add all classes as menu buttons such that you add a stream to a class.
-    (make-instance 'menubutton :master stream-menu :text "New" :command (lambda () (show-add-stream-form)))
+    (make-instance 'menubutton :master stream-menu :text "New" :command (lambda () (stream-form)))
     (let ((edit-stream-menu (make-instance 'menu :master stream-menu :text "Edit")))
-      ;; for the edit-stream-menu, make each saved level a button of the menu
-      (dolist (stream (get-streams))
-	(make-instance 'menubutton :master edit-stream-menu :text (car stream) :command (lambda () (show-add-stream-form (car stream) (cadr stream))))))
+      ;; get classes, show then as a menu. then show the streams as menubuttons of the classes with command to edit the streams
+      (dolist (class (get-classes))
+	(let* ((class-name (car class))
+	      (es-class-menu (make-instance 'menu :master edit-stream-menu :text class-name))
+	       (streams (get-streams class-name)))
+	  (dolist (stream streams)
+	    (make-instance 'menubutton :master es-class-menu :text (car stream) :command (lambda () (stream-form class-name (car stream)))))
+	  )))
     ;; add buttons do delete all level to the delete stream menu
     ;; that adds extra complexicity to the datastore because we need versioning to ensure data integrity
     (let ((delete-stream-menu (make-instance 'menu :master stream-menu :text "Delete")))
@@ -223,7 +238,7 @@
   (grid-columnconfigure *tk* 0 :weight 1) 
   (grid-rowconfigure *tk* 0 :weight 1))
 
-(defun show-add-level-form (&optional level-text)
+(defun level-form (&optional level-text)
   "collect and process data about levels"
   (unless (null *school-info-main-frame*)
     (ltk:destroy *school-info-main-frame*))
@@ -246,7 +261,7 @@
     (grid level-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
     (grid save-button 2 2 :pady 10)))
 
-(defun show-add-class-form (&optional class-text)
+(defun class-form (&optional class-text)
   "collect and process data about classes
    the form has a combobox list of levels to choose from, shows an error if no levels are present."
   (let ((levels (get-levels)))   
@@ -263,7 +278,7 @@
 						   :text "Save Class" :command (lambda ()
 										 (if class-text
 										     (update-class class-text (text class-entry))
-										     (save-class (text class-entry)))
+										     (save-class (text level-combobox) (text class-entry)))
 										 (create-menubar)
 										 (destroy *school-info-main-frame*)
 										 (format *standard-output* "~a" (text level-combobox))
@@ -281,7 +296,7 @@
 	  (grid error-text 0 0 :padx 10 :pady 5))
 	)))
 
-(defun show-add-stream-form (&optional class-text stream-text )
+(defun stream-form (&optional class-text stream-text )
   "collect and process data about streams. includes a combobox for selecting a class, every stream should be part of a class."
   (let ((classes (get-classes)))
     (unless (null *school-info-main-frame*)
