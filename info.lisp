@@ -16,9 +16,12 @@
 ;; DB ACCESS FUNCTIONS
 
 (defun create-tables ()
-  (execute-non-query *db* "create table levels (id INTEGER PRIMARY KEY, level TEXT, added_on DEFAULT CURRENT_TIMESTAMP)")
- (execute-non-query *db* "create table classes (id INTEGER PRIMARY KEY, class TEXT, added_on DEFAULT CURRENT_TIMESTAMP)")
-  (execute-non-query *db* "create table streams (id INTEGER PRIMARY KEY, class TEXT, stream TEXT, added_on DEFAULT CURRENT_TIMESTAMP)")
+  (execute-non-query *db* "create table levels (id INTEGER PRIMARY KEY, level TEXT UNIQUE, added_on DEFAULT CURRENT_TIMESTAMP)")
+  (execute-non-query *db* "create table classes (id INTEGER PRIMARY KEY, class TEXT UNIQUE,  level TEXT, added_on DEFAULT CURRENT_TIMESTAMP)")
+  (execute-non-query *db* "create table streams (id INTEGER PRIMARY KEY, class TEXT, stream TEXT UNIQUE, added_on DEFAULT CURRENT_TIMESTAMP)")
+  (execute-non-query *db* "create table houses (id INTEGER PRIMARY KEY, house TEXT UNIQUE, added_on DEFAULT CURRENT_TIMESTAMP)")
+  ;; use stream is to ensure uniqueness as different classes can have the same stream
+  (execute-non-query *db* "create table subjects (id INTEGER PRIMARY KEY, subject TEXT UNIQUE, stream_id INTEGER, added_on DEFAULT CURRENT_TIMESTAMP)")
   )
 
 ;; LEVEL FUNCTIONS
@@ -52,7 +55,7 @@
 
 ;; STREAM FUNCTIONS
 (defun get-streams ()
-  (execute-to-list *db* "select stream, class from streams"))
+  (execute-to-list *db* "select stream, class, id from streams"))
 
 (defun save-stream (class stream)
   (execute-non-query *db* "insert into streams (class, stream) values (?, ?)" class stream))
@@ -62,6 +65,35 @@
 
 (defun delete-stream (class stream)
   (execute-non-query *db* "delete from streams where class = ? and stream = ?" class stream))
+
+;; HOUSE FUNCTIONS
+(defun get-houses ()
+  (execute-to-list *db* "select house, class from houses"))
+
+(defun save-house (house)
+  (execute-non-query *db* "insert into houses (house) values (?)" house))
+
+(defun update-house (house new-house)
+  (execute-non-query *db* "update houses set house = ? where house = ?" new-house house))
+
+(defun delete-house (house)
+  (execute-non-query *db* "delete from houses where house = ?" house))
+
+;; SUBJECT FUNCTIONS
+(defun get-subjects ()
+  (execute-to-list *db* "select id, subject, stream_id from subjects"))
+
+(defun get-stream-subjects (stream-id)
+  (execute-to-list *db* "select id, subject from subjects where stream_id = ?" stream-id))
+
+(defun save-subject (stream-id subject)
+  (execute-non-query *db* "insert into subjects (stream_id, subject) values (?, ?)" stream-id subject))
+
+(defun update-subject (subject-id subject)
+  (execute-non-query *db* "update subjects set subject = ? where id = ?" subject subject-id))
+
+(defun delete-subject (subject-id)
+  (execute-non-query *db* "delete from subjects where subject_id = ?" subject-id))
 
 (defun iconbitmap (path-to-icon)		
   (format-wish "wm iconbitmap . ~a" path-to-icon))					
@@ -74,7 +106,11 @@
   (let* ((menubar (make-instance 'menubar))
 	 (level-menu (make-instance 'menu :master menubar :text "Levels"))
 	 (class-menu (make-instance 'menu :master menubar :text "Classes"))
-	 (stream-menu (make-instance 'menu :master menubar :text "Streams")))
+	 (stream-menu (make-instance 'menu :master menubar :text "Streams"))
+	 (subject-menu (make-instance 'menu :master menubar :text "Subjects"))
+	 (house-menu (make-instance 'menu :master menubar :text "Houses"))
+	 (dormitory-menu (make-instance 'menu :master menubar :text "Dormitories"))
+	 )
     (setq *menubar* menubar)
     ;; add elements to the menus.
     ;; LEVEL MENUS
@@ -121,12 +157,9 @@
 					      (grid (make-instance 'label :master *school-info-main-frame* :text "The class has been deleted. Note that this affects the data integrity.") 1 0)
 					      ))))
 
-     ;; STREAMS MENU
+    ;; STREAMS MENU
     ;; for the new stream, add all classes as menu buttons such that you add a stream to a class.
-    (let ((new-stream-button (make-instance 'menu :master stream-menu :text "New")))
-      (dolist (class (get-classes))
-	(make-instance 'menubutton :master new-stream-button :text (car class) :command (lambda () (show-add-stream-form (car class))))))
-   ; (make-instance 'menubutton :master stream-menu :text "New" :command (lambda () (show-add-stream-form)))
+    (make-instance 'menubutton :master stream-menu :text "New" :command (lambda () (show-add-stream-form)))
     (let ((edit-stream-menu (make-instance 'menu :master stream-menu :text "Edit")))
       ;; for the edit-stream-menu, make each saved level a button of the menu
       (dolist (stream (get-streams))
@@ -146,12 +179,37 @@
 					      (grid *school-info-main-frame* 0 0)
 					      (grid (make-instance 'label :master *school-info-main-frame* :text "The stream has been deleted. Note that this affects the data integrity.") 1 0)
 					      ))))
+
+    ;; subjects
+    (let ((new-subject-menu (make-instance 'menu :master subject-menu :text "New")))
+      (dolist (stream (get-streams))
+	(make-instance 'menubutton :master new-subject-menu :text (format nil "~a ~a" (cadr stream) (car stream)) :command (lambda () (add-new-subject stream)))))
+    (let ((show-stream-subjects-menu (make-instance 'menu :master subject-menu :text "Show stream subjects")))
+      (dolist (stream (get-streams))
+	(make-instance 'menubutton :master show-stream-subjects-menu :text (format nil "~a ~a" (cadr stream) (car stream)) :command (lambda () (show-stream-subjects stream)))))
+    (make-instance 'menubutton :master subject-menu :text "Edit")
+    (make-instance 'menubutton :master subject-menu :text "Delete")
+    
+    ;; houses
+    (make-instance 'menubutton :master house-menu :text "New")
+    (make-instance 'menubutton :master house-menu :text "Edit")
+    (make-instance 'menubutton :master house-menu :text "Delete")
+
+    ;; dormitories
+    (make-instance 'menubutton :master dormitory-menu :text "New")
+    (make-instance 'menubutton :master dormitory-menu :text "Edit")
+    (make-instance 'menubutton :master dormitory-menu :text "Delete")
+
     ))
 
 (defun start ()
-  "start the info application"
+  "start the info application, try to create the tables, bind the error to continue execution if the tables are already present."
+  (handler-case
+      (create-tables)
+    (sqlite-error (err)
+      (declare (ignorable err))))
   (with-ltk ()
-   ; (iconbitmap #p"/home/lam/common-lisp/school/favicon.ico")
+					; (iconbitmap #p"/home/lam/common-lisp/school/favicon.ico")
     (create-menubar)
     (minsize *tk* 800 600)
     ;; start in maximized on OSX and Windows
@@ -159,6 +217,11 @@
       (setf (wm-state *tk*) 'zoomed))
     (wm-title *tk* "School Info")
     ))
+
+(defun prepare-main-window ()
+  (grid *school-info-main-frame* 0 0)
+  (grid-columnconfigure *tk* 0 :weight 1) 
+  (grid-rowconfigure *tk* 0 :weight 1))
 
 (defun show-add-level-form (&optional level-text)
   "collect and process data about levels"
@@ -178,71 +241,135 @@
 									   (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
 									   (grid *school-info-main-frame* 0 0)
 									   (grid (make-instance 'label :master *school-info-main-frame* :text "The level has been saved.") 1 0)))))
-    (grid *school-info-main-frame* 0 0)
-    (grid-columnconfigure *tk* 0 :weight 1) 
-    (grid-rowconfigure *tk* 0 :weight 1)
+    (prepare-main-window)
     (grid  level-label 1 0 :padx 10 :pady 5)
     (grid level-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
     (grid save-button 2 2 :pady 10)))
 
 (defun show-add-class-form (&optional class-text)
   "collect and process data about classes
-   the form has a dropdown list of levels to choose from, shows an error if no levels are present."
-  (let ((level)
-	(levels (get-levels)))   
+   the form has a combobox list of levels to choose from, shows an error if no levels are present."
+  (let ((levels (get-levels)))   
     (unless (null *school-info-main-frame*)
       (ltk:destroy *school-info-main-frame*))
     (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-    (let* (
-	   (level-label (make-instance 'label :master *school-info-main-frame* :text "Select Level"))
-	   (level-combobox (make-instance 'combobox :text (caar levels) :master *school-info-main-frame* :values (mapcar (lambda (x) (car x)) levels)))
-	   (class-label (make-instance 'label :master *school-info-main-frame* :text "Enter Class Name"))
-	   (class-entry (make-instance 'entry :master *school-info-main-frame* :text class-text))
-	   (save-button (make-instance 'button :master *school-info-main-frame*
-					       :text "Save Class" :command (lambda ()
-									     (if class-text
-										 (update-class class-text (text class-entry))
-										 (save-class (text class-entry)))
-									     (create-menubar)
-									     (destroy *school-info-main-frame*)
-									     (format *standard-output* "~a" (text level-combobox))
-									     (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-									     (grid *school-info-main-frame* 0 0)
-									     (grid (make-instance 'label :master *school-info-main-frame* :text "The class has been saved.") 1 0)))))
-      (grid *school-info-main-frame* 0 0)
-      (grid-columnconfigure *tk* 0 :weight 1) 
-      (grid-rowconfigure *tk* 0 :weight 1)
-      (grid level-label 0 0 :padx 10 :pady 5)
-      (grid level-combobox 0 2 :padx 10 :pady 5)
-      (grid class-label 1 0 :padx 10 :pady 5)
-      (grid class-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
-      (grid save-button 2 2 :pady 10))))
+    (if levels
+	(let* (
+	       (level-label (make-instance 'label :master *school-info-main-frame* :text "Select Level"))
+	       (level-combobox (make-instance 'combobox :text (caar levels) :master *school-info-main-frame* :values (mapcar (lambda (x) (car x)) levels)))
+	       (class-label (make-instance 'label :master *school-info-main-frame* :text "Enter Class Name"))
+	       (class-entry (make-instance 'entry :master *school-info-main-frame* :text class-text))
+	       (save-button (make-instance 'button :master *school-info-main-frame*
+						   :text "Save Class" :command (lambda ()
+										 (if class-text
+										     (update-class class-text (text class-entry))
+										     (save-class (text class-entry)))
+										 (create-menubar)
+										 (destroy *school-info-main-frame*)
+										 (format *standard-output* "~a" (text level-combobox))
+										 (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+										 (grid *school-info-main-frame* 0 0)
+										 (grid (make-instance 'label :master *school-info-main-frame* :text "The class has been saved.") 1 0)))))
+	  (prepare-main-window)
+	  (grid level-label 0 0 :padx 10 :pady 5)
+	  (grid level-combobox 0 2 :padx 10 :pady 5)
+	  (grid class-label 1 0 :padx 10 :pady 5)
+	  (grid class-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
+	  (grid save-button 2 2 :pady 10))
+	(let ((error-text (make-instance 'label :master *school-info-main-frame* :text "There are no levels, first create a level to continue.")))
+	  (prepare-main-window)
+	  (grid error-text 0 0 :padx 10 :pady 5))
+	)))
 
 (defun show-add-stream-form (&optional class-text stream-text )
-  "collect and process data about streams"
-  (unless (null *school-info-main-frame*)
-    (ltk:destroy *school-info-main-frame*))
-  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (let* (	 
-	 (class-label (make-instance 'label :master *school-info-main-frame* :text "Enter Class Name"))
-	 (class-entry (make-instance 'entry :master *school-info-main-frame* :text class-text :state (if class-text :readonly :normal)))
-	 (stream-label (make-instance 'label :master *school-info-main-frame* :text "Enter Stream Name"))
-	 (stream-entry (make-instance 'entry :master *school-info-main-frame* :text stream-text))
-	 (save-button (make-instance 'button :master *school-info-main-frame*
-					     :text "Save Stream" :command (lambda ()
-									    (if stream-text
-										(update-stream class-text stream-text (text stream-entry))
-										(save-stream (text class-entry) (text stream-entry)))
-									    (create-menubar)
-									    (destroy *school-info-main-frame*)
-									    (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-									    (grid *school-info-main-frame* 0 0)
-									    (grid (make-instance 'label :master *school-info-main-frame* :text "The stream has been saved.") 1 0)))))
-    (grid *school-info-main-frame* 0 0)
-    (grid-columnconfigure *tk* 0 :weight 1) 
-    (grid-rowconfigure *tk* 0 :weight 1)
-    (grid class-label 1 0 :padx 10 :pady 5)
-    (grid class-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
-    (grid stream-label 2 0 :padx 10 :pady 5)
-    (grid stream-entry 2 1 :padx 10 :pady 5 :sticky "e" :columnspan 5)
-    (grid save-button 3 2 :pady 10)))
+  "collect and process data about streams. includes a combobox for selecting a class, every stream should be part of a class."
+  (let ((classes (get-classes)))
+    (unless (null *school-info-main-frame*)
+      (ltk:destroy *school-info-main-frame*))
+    (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+    (if classes
+	(let* (
+	       (class-label (make-instance 'label :master *school-info-main-frame* :text "Choose Class Name"))
+	       (class-combobox (make-instance 'combobox :text (caar classes) :master *school-info-main-frame* :values (mapcar (lambda (x) (car x)) classes)))
+	       (stream-label (make-instance 'label :master *school-info-main-frame* :text "Enter Stream Name"))
+	       (stream-entry (make-instance 'entry :master *school-info-main-frame* :text stream-text))
+	       (save-button (make-instance 'button :master *school-info-main-frame*
+						   :text "Save Stream" :command (lambda ()
+										  (if stream-text
+										      (update-stream class-text stream-text (text stream-entry))
+										      (save-stream (text class-combobox) (text stream-entry)))
+										  (create-menubar)
+										  (destroy *school-info-main-frame*)
+										  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+										  (grid *school-info-main-frame* 0 0)
+										  (grid (make-instance 'label :master *school-info-main-frame* :text "The stream has been saved.") 1 0)))))
+	  (prepare-main-window)
+	  (grid class-label 1 0 :padx 10 :pady 5)
+	  (grid class-combobox 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
+	  (grid stream-label 2 0 :padx 10 :pady 5)
+	  (grid stream-entry 2 1 :padx 10 :pady 5 :sticky "e" :columnspan 5)
+	  (grid save-button 3 2 :pady 10))
+	(let ((error-text (make-instance 'label :master *school-info-main-frame* :text "There are no classes, first create a class to add stream to.")))
+	  (prepare-main-window)
+	  (grid error-text 0 0 :padx 10 :pady 5))
+	)))
+
+(defun add-new-subject (stream-data &optional subject-name)
+  "create a new subject; (= stream-data (list stream class stream_id))"
+  (let ((class (cadr stream-data))
+	(stream (car stream-data))
+	(stream-id (caddr stream-data))
+	(levels (get-levels)))
+    (unless (null *school-info-main-frame*)
+      (ltk:destroy *school-info-main-frame*))
+    (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+    (if levels
+	(let* (
+	       (class-label (make-instance 'label :master *school-info-main-frame* :text "Class"))
+	       (class-entry (make-instance 'entry :master *school-info-main-frame* :text class :state :disabled))
+	       (stream-label (make-instance 'label :master *school-info-main-frame* :text "Stream"))
+	       (stream-entry (make-instance 'entry :master *school-info-main-frame* :text stream :state :disabled))
+	       (subject-label (make-instance 'label :master *school-info-main-frame* :text "Enter Subject"))
+	       (subject-entry (make-instance 'entry :master *school-info-main-frame*))
+	       (save-button (make-instance 'button :master *school-info-main-frame*
+						   :text "Save Subject" :command (lambda ()
+										  (if subject-name
+										      (update-stream 1 2 3)
+										      (save-subject stream-id (text subject-entry))
+										      )
+										  (create-menubar)
+										  (destroy *school-info-main-frame*)
+										  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+										  (grid *school-info-main-frame* 0 0)
+										  (grid (make-instance 'label :master *school-info-main-frame* :text "The subject has been saved.") 1 0))))
+	       )
+	  (prepare-main-window)
+	  (grid class-label 0 0 :padx 10 :pady 5)
+	  (grid class-entry 0 2 :padx 10 :pady 5)
+	  (grid stream-label 1 0 :padx 10 :pady 5)
+	  (grid stream-entry 1 2 :padx 10 :pady 5)
+	  (grid subject-label 2 0 :padx 10 :pady 5)
+	  (grid subject-entry 2 2 :padx 10 :pady 5)
+	  (grid save-button 3 2 :pady 10))
+	(let ((error-text (make-instance 'label :master *school-info-main-frame* :text "There are no levels, first create a level to continue.")))
+	  (prepare-main-window)
+	  (grid error-text 0 0 :padx 10 :pady 5))
+	)))
+
+(defun show-stream-subjects (stream-data)
+  "get and display all subjects for a particular stream"
+  (let ((stream-subjects (get-stream-subjects (caddr stream-data))))
+    (unless (null *school-info-main-frame*)
+      (ltk:destroy *school-info-main-frame*))
+    (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+    (if stream-subjects
+	(let* ((subjects-label (make-instance 'label :master *school-info-main-frame* :text (format nil "Subjects for ~a ~a" (cadr stream-data) (car stream-data))))
+	       (subject-listbox (make-instance 'listbox :master *school-info-main-frame*)))
+	  (prepare-main-window)
+	  (listbox-append subject-listbox (mapcar #'cadr stream-subjects))
+	  (grid subjects-label 0 0 :padx 10 :pady 5)
+	  (grid subject-listbox 1 0 :padx 10 :pady 5))
+	(let ((error-text (make-instance 'label :master *school-info-main-frame* :text (format nil "There are no subjects for ~a ~a." (cadr stream-data) (car stream-data)))))
+	  (prepare-main-window)
+	  (grid error-text 0 0 :padx 10 :pady 5))
+	)))
