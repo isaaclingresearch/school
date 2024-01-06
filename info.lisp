@@ -20,26 +20,37 @@
   (execute-non-query *db* "create table classes (id integer primary key, class text unique,  level_id integer, added_on default current_timestamp, foreign key (level_id) references levels (id))")
   (execute-non-query *db* "create table streams (id integer primary key, class_id integer, stream text unique, added_on default current_timestamp, foreign key (class_id) references classes (id))")
   (execute-non-query *db* "create table houses (id integer primary key, house text unique, added_on default current_timestamp)")
+  (execute-non-query *db* "create table dorms (id integer primary key, dorm text unique, added_on default current_timestamp)")
   ;; use stream is to ensure uniqueness as different classes can have the same stream
   (execute-non-query *db* "create table subjects (id integer primary key, subject text unique, stream_id integer, added_on default current_timestamp, foreign key (stream_id) references streams (id))")
   )
 
-;; LEVEL FUNCTIONS
-(defun get-levels ()
-  (execute-to-list *db* "select level, id from levels"))
+;; define macros to define the following functions for single entry forms
+(defmacro intern-name (var1 type)
+  (let ((action (case type
+		  (:get "get-~a")
+		  (:get-id "get-~a-id")
+		  (:delete "delete-~a")
+		  (:save "save-~a")
+		  (:update "update-~a"))))
+    `(intern (format nil ,action ,var1))))
 
-(defun get-level-id (level)
-  (caar (execute-to-list *db* "select id from levels where level = ?" level)))
+(defmacro make-functions-1 (name table)
+    `(progn
+      (defun ,(intern-name name :get) ()
+	(execute-to-list *db* (format nil "select id, ~a from ~a" ,name ,table)))
+      (defun ,(intern-name name :get-id) (datum)
+	(caar (execute-to-list *db* (format nil "select id from ~a where ~a = ?" ,table ,name) datum)))
+      (defun ,(intern-name name :save) (datum)
+	(execute-non-query *db* (format nil "insert into ~a (~a) values (?)" ,table ,name) datum))
+      (defun ,(intern-name name :update) (id new-datum)
+	(execute-non-query *db* (format nil "update ~a set ~a = ? where id = ?" ,table ,name) new-datum id))
+      (defun ,(intern-name name :delete) (id)
+	(execute-non-query *db* (format nil "delete from ~a where id = ?" ,table) id))))
 
-(defun save-level (level)
-  (execute-non-query *db* "insert into levels (level) values (?)" level))
-
-(defun update-level (level new-level)
-  (execute-non-query *db* "update levels set level = ? where level = ?" new-level level))
-
-(defun delete-level (level)
-  (execute-non-query *db* "delete from levels where level = ?" level))
-
+(make-functions-1 "level" "levels")
+(make-functions-1 "house" "houses")
+(make-functions-1 "dorm" "dorms")
 ;; CLASS FUNCTIONS
 (defun get-classes (&optional level-id)
   (if level-id
@@ -129,24 +140,21 @@
 	 (subject-menu (make-instance 'menu :master menubar :text "Subjects"))
 	 (paper-menu (make-instance 'menu :master menubar :text "Papers"))
 	 (house-menu (make-instance 'menu :master menubar :text "Houses"))
-	 (dormitory-menu (make-instance 'menu :master menubar :text "Dormitories"))
+	 (dorm-menu (make-instance 'menu :master menubar :text "Dormitories"))
 	 )
     (setq *menubar* menubar)
     ;; add elements to the menus.
     ;; LEVEL MENUS
     (make-instance 'menubutton :master level-menu :text "New" :command (lambda () (level-form)))
-    (let ((edit-level-menu (make-instance 'menu :master level-menu :text "Edit")))
-      ;; for the edit-level-menu, make each saved level a button of the menu
-      (dolist (level (get-levels))
-	(make-instance 'menubutton :master edit-level-menu :text (car level) :command (lambda () (level-form (car level))))))
-    ;; add buttons do delete all level to the delete level menu
-    ;; that adds extra complexicity to the datastore because we need versioning to ensure data integrity
-    (let ((delete-level-menu (make-instance 'menu :master level-menu :text "Delete")))
-      (dolist (level (get-levels))
-	(make-instance 'menubutton :master delete-level-menu :text (car level)
+    (let ((edit-level-menu (make-instance 'menu :master level-menu :text "Edit"))
+	  (delete-level-menu (make-instance 'menu :master level-menu :text "Delete"))
+	  (levels (|get-level|)))
+      (dolist (level levels)
+	(make-instance 'menubutton :master edit-level-menu :text (cadr level) :command (lambda () (level-form level)))
+	(make-instance 'menubutton :master delete-level-menu :text (cadr level)
 				   :command (lambda ()
 					      (let ((message-text "Level has been deleted."))
-						(handler-case (delete-level (car level))
+						(handler-case (|delete-level| (car level))
 						  (sqlite-constraint-error (err)
 						    (declare (ignorable err))
 						    (setq message-text "Level can't be deleted as it has classes, first delete them and try again.")))
@@ -161,7 +169,7 @@
     ;; CLASSES MENU
     (make-instance 'menubutton :master class-menu :text "New" :command (lambda () (class-form)))
     (let ((edit-class-menu (make-instance 'menu :master class-menu :text "Edit"))
-	  (levels (get-levels)))
+	  (levels (|get-level|)))
       ;; get all levels, then classes of a certain level,
       ;; display levels as menus with classes as menubuttons with command to edit class.
       (dolist (level levels)
@@ -174,7 +182,7 @@
     ;; add buttons do delete all level to the delete class menu
     ;; that adds extra complexicity to the datastore because we need versioning to ensure data integrity
     (let ((delete-class-menu (make-instance 'menu :master class-menu :text "Delete"))
-	  (levels (get-levels)))
+	  (levels (|get-level|)))
       ;; get all levels, then classes of a certain level
       ;; display levels as menus with classes as menubuttons with a command to delete class
       (dolist (level levels)
@@ -203,7 +211,7 @@
     (make-instance 'menubutton :master stream-menu :text "New" :command (lambda () (stream-form)))
     (let ((edit-stream-menu (make-instance 'menu :master stream-menu :text "Edit")))
       ;; get levels, then their classes, then their streams as menubuttons with command to edit the stream
-      (dolist (level (get-levels))
+      (dolist (level (|get-level|))
 	(let* ((level-menu (make-instance 'menu :master edit-stream-menu :text (car level)))
 	       (classes (get-classes (cadr level))))
 	  (dolist (class classes)
@@ -215,7 +223,7 @@
     ;; add buttons do delete all level to the delete stream menu
     ;; that adds extra complexicity to the datastore because we need versioning to ensure data integrity
     (let ((delete-stream-menu (make-instance 'menu :master stream-menu :text "Delete"))
-	  (levels (get-levels)))
+	  (levels (|get-level|)))
       (dolist (level levels)
 	(let* ((level-menu (make-instance 'menu :master delete-stream-menu :text (car level)))
 	       (classes (get-classes (cadr level))))
@@ -241,7 +249,7 @@
 
     ;; subjects
     (let ((new-subject-menu (make-instance 'menu :master subject-menu :text "New"))
-	  (levels (get-levels)))
+	  (levels (|get-level|)))
       (dolist (level levels)
 	(let* ((level-menu (make-instance 'menu :master new-subject-menu :text (car level)))
 	       (classes (get-classes (cadr level))))
@@ -252,7 +260,7 @@
 		(make-instance 'menubutton :master class-menu :text (car stream) :command (lambda () (subject-form stream)))))))))
 
     (let ((show-subject-menu (make-instance 'menu :master subject-menu :text "Show"))
-	  (levels (get-levels)))
+	  (levels (|get-level|)))
       (dolist (level levels)
 	(let* ((level-menu (make-instance 'menu :master show-subject-menu :text (car level)))
 	       (classes (get-classes (cadr level))))
@@ -263,7 +271,7 @@
 		(make-instance 'menubutton :master class-menu :text (car stream) :command (lambda () (show-stream-subjects stream)))))))))
 
     (let ((edit-subject-menu (make-instance 'menu :master subject-menu :text "Edit"))
-	  (levels (get-levels)))
+	  (levels (|get-level|)))
       (dolist (level levels)
 	(let* ((level-menu (make-instance 'menu :master edit-subject-menu :text (car level)))
 	       (classes (get-classes (cadr level))))
@@ -277,7 +285,7 @@
 		    (make-instance 'menubutton :master streams-menu :text (cadr subject) :command (lambda () (subject-form stream subject)))))))))))
 
     (let ((delete-subject-menu (make-instance 'menu :master subject-menu :text "Delete"))
-	  (levels (get-levels)))
+	  (levels (|get-level|)))
       (dolist (level levels)
 	(let* ((level-menu (make-instance 'menu :master delete-subject-menu :text (car level)))
 	       (classes (get-classes (cadr level))))
@@ -303,15 +311,50 @@
 												      (grid (make-instance 'label :master *school-info-main-frame* :text message) 1 0))
 												    ))))))))))
     
-    ;; houses
-    (make-instance 'menubutton :master house-menu :text "New")
-    (make-instance 'menubutton :master house-menu :text "Edit")
-    (make-instance 'menubutton :master house-menu :text "Delete")
+    
+        ;; house MENUS
+    (make-instance 'menubutton :master house-menu :text "New" :command (lambda () (house-form)))
+    (let ((edit-menu (make-instance 'menu :master house-menu :text "Edit"))
+	  (delete-menu (make-instance 'menu :master house-menu :text "Delete"))
+	  (houses (|get-house|)))
+      (dolist (house houses)
+	(make-instance 'menubutton :master edit-menu :text (cadr house) :command (lambda () (house-form house)))
+	(make-instance 'menubutton :master delete-menu :text (cadr house)
+				   :command (lambda ()
+					      (let ((message-text "House has been deleted."))
+						(handler-case (|delete-house| (car level))
+						  (sqlite-constraint-error (err)
+						    (declare (ignorable err))
+						    (setq message-text "House can't be deleted as it has data depending on it, first delete them and try again.")))
+						(create-menubar)
+						(grid-columnconfigure *tk* 0 :weight 1) 
+						(grid-rowconfigure *tk* 0 :weight 1)
+						(destroy *school-info-main-frame*)
+						(setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+						(grid *school-info-main-frame* 0 0)
+						(grid (make-instance 'label :master *school-info-main-frame* :text message-text) 1 0))))))
 
     ;; dormitories
-    (make-instance 'menubutton :master dormitory-menu :text "New")
-    (make-instance 'menubutton :master dormitory-menu :text "Edit")
-    (make-instance 'menubutton :master dormitory-menu :text "Delete")
+    (make-instance 'menubutton :master dorm-menu :text "New" :command (lambda () (dorm-form)))
+    (let ((edit-menu (make-instance 'menu :master dorm-menu :text "Edit"))
+	  (delete-menu (make-instance 'menu :master dorm-menu :text "Delete"))
+	  (dorms (|get-dorm|)))
+      (dolist (dorm dorms)
+	(make-instance 'menubutton :master edit-menu :text (cadr dorm) :command (lambda () (dorm-form dorm)))
+	(make-instance 'menubutton :master delete-menu :text (cadr dorm)
+				   :command (lambda ()
+					      (let ((message-text "Dorm has been deleted."))
+						(handler-case (|delete-dorm| (car level))
+						  (sqlite-constraint-error (err)
+						    (declare (ignorable err))
+						    (setq message-text "Dorm can't be deleted as it has data depending on it, first delete them and try again.")))
+						(create-menubar)
+						(grid-columnconfigure *tk* 0 :weight 1) 
+						(grid-rowconfigure *tk* 0 :weight 1)
+						(destroy *school-info-main-frame*)
+						(setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+						(grid *school-info-main-frame* 0 0)
+						(grid (make-instance 'label :master *school-info-main-frame* :text message-text) 1 0))))))
 
     ))
 
@@ -332,19 +375,20 @@
     (wm-title *tk* "School Info")
     ))
 
-(defun level-form (&optional level-text)
-  "collect and process data about levels"
+(defun level-form (&optional level)
+  "collect and process data about levels
+   (= level (cons id level))"
   (unless (null *school-info-main-frame*)
     (ltk:destroy *school-info-main-frame*))
   (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
   (let* (
 	 (level-label (make-instance 'label :master *school-info-main-frame* :text "Enter Level Name"))
-	 (level-entry (make-instance 'entry :master *school-info-main-frame* :text level-text))
+	 (level-entry (make-instance 'entry :master *school-info-main-frame* :text (cadr level)))
 	 (save-button (make-instance 'button :master *school-info-main-frame*
 					     :text "Save Level" :command (lambda ()
-									   (if level-text
-									       (update-level level-text (text level-entry))
-									       (save-level (text level-entry)))
+									   (if level
+									       (|update-level| (car level) (text level-entry))
+									       (|save-level| (text level-entry)))
 									   (create-menubar)
 									   (destroy *school-info-main-frame*)
 									   (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
@@ -355,10 +399,59 @@
     (grid level-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
     (grid save-button 2 2 :pady 10)))
 
+(defun house-form (&optional house)
+  "collect and process data about houses
+   (= house (cons id house))"
+  (unless (null *school-info-main-frame*)
+    (ltk:destroy *school-info-main-frame*))
+  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  (let* (
+	 (house-label (make-instance 'label :master *school-info-main-frame* :text "Enter House Name"))
+	 (house-entry (make-instance 'entry :master *school-info-main-frame* :text (cadr house)))
+	 (save-button (make-instance 'button :master *school-info-main-frame*
+					     :text "Save House" :command (lambda ()
+									   (if house
+									       (|update-house| (car house) (text house-entry))
+									       (|save-house| (text house-entry)))
+									   (create-menubar)
+									   (destroy *school-info-main-frame*)
+									   (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+									   (grid *school-info-main-frame* 0 0)
+									   (grid (make-instance 'label :master *school-info-main-frame* :text "The house has been saved.") 1 0)))))
+    (prepare-main-window)
+    (grid  house-label 1 0 :padx 10 :pady 5)
+    (grid house-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
+    (grid save-button 2 2 :pady 10)))
+
+
+(defun dorm-form (&optional dorm)
+  "collect and process data about dorms
+   (= dorm (cons id dorm))"
+  (unless (null *school-info-main-frame*)
+    (ltk:destroy *school-info-main-frame*))
+  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  (let* (
+	 (dorm-label (make-instance 'label :master *school-info-main-frame* :text "Enter Dorm Name"))
+	 (dorm-entry (make-instance 'entry :master *school-info-main-frame* :text (cadr dorm)))
+	 (save-button (make-instance 'button :master *school-info-main-frame*
+					     :text "Save Dorm" :command (lambda ()
+									   (if dorm
+									       (|update-dorm| (car dorm) (text dorm-entry))
+									       (|save-dorm| (text dorm-entry)))
+									   (create-menubar)
+									   (destroy *school-info-main-frame*)
+									   (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+									   (grid *school-info-main-frame* 0 0)
+									   (grid (make-instance 'label :master *school-info-main-frame* :text "The dorm has been saved.") 1 0)))))
+    (prepare-main-window)
+    (grid  dorm-label 1 0 :padx 10 :pady 5)
+    (grid dorm-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
+    (grid save-button 2 2 :pady 10)))
+
 (defun class-form (&optional level-id class-text)
   "collect and process data about classes
    the form has a combobox list of levels to choose from, shows an error if no levels are present."
-  (let ((levels (get-levels)))   
+  (let ((levels (|get-level|)))   
     (unless (null *school-info-main-frame*)
       (ltk:destroy *school-info-main-frame*))
     (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
@@ -429,7 +522,7 @@
   (let ((class (get-class-name (cadr stream-data)))
 	(stream (car stream-data))
 	(stream-id (cadr stream-data))
-	(levels (get-levels))
+	(levels (|get-level|))
 	(subject-name (cadr subject-data))
 	(subject-id (car subject-data)))
     (unless (null *school-info-main-frame*)
