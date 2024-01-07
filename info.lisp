@@ -10,44 +10,50 @@
 
 (defparameter *school-info-main-frame* nil)		
 
-;; defines the sqlite3 database used by the application.
-(defparameter *db* (connect  (uiop:native-namestring "~/common-lisp/school/db/school.db")))
-
 ;; DB ACCESS FUNCTIONS
 
-(defun create-tables ()
-  (execute-non-query *db* "create table levels (id integer primary key, level text unique, added_on default current_timestamp)")
-  (execute-non-query *db* "create table classes (id integer primary key, class text unique,  level_id integer, added_on default current_timestamp, foreign key (level_id) references levels (id))")
-  (execute-non-query *db* "create table streams (id integer primary key, class_id integer, stream text unique, added_on default current_timestamp, foreign key (class_id) references classes (id))")
-  (execute-non-query *db* "create table houses (id integer primary key, house text unique, added_on default current_timestamp)")
-  (execute-non-query *db* "create table dorms (id integer primary key, dorm text unique, added_on default current_timestamp)")
+(defun create-tables (db)
+  (execute-non-query db "create table levels (id integer primary key, level text unique, added_on default current_timestamp)")
+  (execute-non-query db "create table classes (id integer primary key, class text unique,  level_id integer, added_on default current_timestamp, foreign key (level_id) references levels (id))")
+  (execute-non-query db "create table streams (id integer primary key, class_id integer, stream text unique, added_on default current_timestamp, foreign key (class_id) references classes (id))")
+  (execute-non-query db "create table houses (id integer primary key, house text unique, added_on default current_timestamp)")
+  (execute-non-query db "create table dorms (id integer primary key, dorm text unique, added_on default current_timestamp)")
   ;; use stream is to ensure uniqueness as different classes can have the same stream
-  (execute-non-query *db* "create table subjects (id integer primary key, subject text, stream_id integer, added_on default current_timestamp, foreign key (stream_id) references streams (id))")
-  (execute-non-query *db* "create table papers (id integer primary key, paper text, subject_id integer, added_on default current_timestamp, foreign key (subject_id) references subjects (id))")
+  (execute-non-query db "create table subjects (id integer primary key, subject text, stream_id integer, added_on default current_timestamp, foreign key (stream_id) references streams (id))")
+  (execute-non-query db "create table papers (id integer primary key, paper text, subject_id integer, added_on default current_timestamp, foreign key (subject_id) references subjects (id))")
   )
 
 ;; define macros to define the following functions for single entry forms
 (defmacro intern-name (var1 type)
-  (let ((action (case type
+  `(let ((action (case ,type
 		  (:get "get-~a")
 		  (:get-id "get-~a-id")
 		  (:delete "delete-~a")
 		  (:save "save-~a")
 		  (:update "update-~a"))))
-    `(intern (format nil ,action ,var1))))
+    (intern (format nil action ,var1))))
+
+(defmacro conn (&body body)
+  `(with-open-database (db (uiop:native-namestring "~/common-lisp/school/db/school.db"))
+     ,@body))
 
 (defmacro make-functions-1 (name table)
   `(progn
      (defun ,(intern-name name :get) ()
-       (execute-to-list *db* (format nil "select id, ~a from ~a" ,name ,table)))
+       (conn 
+	 (execute-to-list db (format nil "select id, ~a from ~a" ,name ,table))))
      (defun ,(intern-name name :get-id) (datum)
-       (caar (execute-to-list *db* (format nil "select id from ~a where ~a = ?" ,table ,name) datum)))
+       (conn 
+	 (caar (execute-to-list db (format nil "select id from ~a where ~a = ?" ,table ,name) datum))))
      (defun ,(intern-name name :save) (datum)
-       (execute-non-query *db* (format nil "insert into ~a (~a) values (?)" ,table ,name) datum))
+       (conn 
+	 (execute-non-query db (format nil "insert into ~a (~a) values (?)" ,table ,name) datum)))
      (defun ,(intern-name name :update) (id new-datum)
-       (execute-non-query *db* (format nil "update ~a set ~a = ? where id = ?" ,table ,name) new-datum id))
+       (conn 
+	 (execute-non-query db (format nil "update ~a set ~a = ? where id = ?" ,table ,name) new-datum id)))
      (defun ,(intern-name name :delete) (id)
-       (execute-non-query *db* (format nil "delete from ~a where id = ?" ,table) id))))
+       (conn 
+	 (execute-non-query db (format nil "delete from ~a where id = ?" ,table) id)))))
 
 (make-functions-1 "level" "levels")
 (make-functions-1 "house" "houses")
@@ -55,84 +61,107 @@
 
 ;; CLASS FUNCTIONS
 (defun get-classes (&optional level-id)
-  (if level-id
-      (execute-to-list *db* "select id, class from classes where level_id = ?" level-id)
-      (execute-to-list *db* "select id, class, level_id from classes")))
+  (conn 
+    (if level-id
+	(execute-to-list db "select id, class from classes where level_id = ?" level-id)
+	(execute-to-list db "select id, class, level_id from classes"))))
 
 (defun get-class-id (class)
-  (caar (execute-to-list *db* "select id from classes where class = ?" class)))
+  (conn 
+    (caar (execute-to-list db "select id from classes where class = ?" class))))
 
 (defun get-class-name (class-id)
-  (caar (execute-to-list *db* "select class from classes where id = ?" class-id)))
+  (conn 
+    (caar (execute-to-list db "select class from classes where id = ?" class-id))))
 
 (defun save-class (level-id class)
-  (execute-non-query *db* "insert into classes (level_id, class) values (?, ?)" level-id class))
+  (conn 
+    (execute-non-query db "insert into classes (level_id, class) values (?, ?)" level-id class)))
 
 (defun update-class (class-id new-class)
-  (execute-non-query *db* "update classes set class = ? where id = ?" new-class class-id))
+  (conn 
+    (execute-non-query db "update classes set class = ? where id = ?" new-class class-id)))
 
 (defun delete-class (class-id)
-  (execute-non-query *db* "delete from classes where id = ?" class-id))
+  (conn 
+    (execute-non-query db "delete from classes where id = ?" class-id)))
 
 (defun iconbitmap (path-to-icon)		
   (format-wish "wm iconbitmap . ~a" path-to-icon))					
 
 ;; STREAM FUNCTIONS
 (defun get-streams (&optional class-id)
-  (if class-id
-      (execute-to-list *db* "select id, stream, class_id from streams where class_id = ?" class-id)
-      (execute-to-list *db* "select id, stream, class_id from streams")))
+  (conn 
+    (if class-id
+	(execute-to-list db "select id, stream, class_id from streams where class_id = ?" class-id)
+	(execute-to-list db "select id, stream, class_id from streams"))))
 
 (defun save-stream (class-id stream)
-  (execute-non-query *db* "insert into streams (class_id, stream) values (?, ?)" class-id stream))
+  (conn 
+    (execute-non-query db "insert into streams (class_id, stream) values (?, ?)" class-id stream)))
 
 (defun update-stream (stream-id new-stream)
-  (execute-non-query *db* "update streams set stream = ? where id = ?" new-stream stream-id))
+  (conn 
+    (execute-non-query db "update streams set stream = ? where id = ?" new-stream stream-id)))
 
 (defun delete-stream (stream-id)
-  (execute-non-query *db* "delete from streams where id = ?" stream-id))
+  (conn 
+    (execute-non-query db "delete from streams where id = ?" stream-id)))
 
 ;; HOUSE FUNCTIONS
 (defun get-houses ()
-  (execute-to-list *db* "select id, house from houses"))
+  (conn 
+    (execute-to-list db "select id, house from houses")))
 
 (defun save-house (house)
-  (execute-non-query *db* "insert into houses (house) values (?)" house))
+  (conn 
+    (execute-non-query db "insert into houses (house) values (?)" house)))
 
 (defun update-house (id new-house)
-  (execute-non-query *db* "update houses set house = ? where id = ?" new-house id))
+  (conn 
+    (execute-non-query db "update houses set house = ? where id = ?" new-house id)))
 
 (defun delete-house (id)
-  (execute-non-query *db* "delete from houses where id = ?" id))
+  (conn 
+    (execute-non-query db "delete from houses where id = ?" id)))
 
 ;; SUBJECT FUNCTIONS
 (defun get-subjects ()
-  (execute-to-list *db* "select id, subject, stream_id from subjects"))
+  (conn 
+    (execute-to-list db "select id, subject, stream_id from subjects")))
 
 (defun get-stream-subjects (stream-id)
-  (execute-to-list *db* "select id, subject from subjects where stream_id = ?" stream-id))
+  (conn 
+    (execute-to-list db "select id, subject from subjects where stream_id = ?" stream-id)))
 
 (defun save-subject (stream-id subject)
-  (execute-non-query *db* "insert into subjects (stream_id, subject) values (?, ?)" stream-id subject))
+  (conn 
+    (execute-non-query db "insert into subjects (stream_id, subject) values (?, ?)" stream-id subject)))
 
 (defun update-subject (subject-id subject)
-  (execute-non-query *db* "update subjects set subject = ? where id = ?" subject subject-id))
+  (conn 
+    (execute-non-query db "update subjects set subject = ? where id = ?" subject subject-id)))
 
 (defun delete-subject (subject-id)
-  (execute-non-query *db* "delete from subjects where id = ?" subject-id))
+  (conn 
+    (execute-non-query db "delete from subjects where id = ?" subject-id)))
 
 ;; PAPER FUNCTIONS
 (defun get-papers (subject-id)
-  (execute-to-list *db* "select id, paper from papers where subject_id = ?" subject-id))
+  (conn 
+    (execute-to-list db "select id, paper from papers where subject_id = ?" subject-id)))
 
 (defun save-paper (subject-id paper)
-  (execute-non-query *db* "insert into papers (subject_id, paper) values (?, ?)" subject-id paper))
+  (conn 
+    (execute-non-query db "insert into papers (subject_id, paper) values (?, ?)" subject-id paper)))
 
 (defun update-paper (paper-id paper)
-  (execute-non-query *db* "update papers set paper = ? where id = ?" paper paper-id))
+  (conn 
+    (execute-non-query db "update papers set paper = ? where id = ?" paper paper-id)))
 
 (defun delete-paper (paper-id)
-  (execute-non-query *db* "delete from papers where id = ?" paper-id))
+  (conn 
+    (execute-non-query db "delete from papers where id = ?" paper-id)))
 
 (defparameter *menubar* nil)
 
@@ -154,7 +183,7 @@
 					    (let ((message-text "Level has been deleted."))
 					      (handler-case (|delete-level| (car level))
 						(sqlite-constraint-error (err)
-						  (declare (ignorable err))
+						  (declare (ignore err))
 						  (setq message-text "Level can't be deleted as it has classes, first delete them and try again.")))
 					      (create-menubar)
 					      (grid-columnconfigure *tk* 0 :weight 1) 
@@ -180,7 +209,7 @@
 						(let ((message "The class has been deleted.")) 
 						  (handler-case (delete-class (car class))
 						    (sqlite-constraint-error (err)
-						      (declare (ignorable err))
+						      (declare (ignore err))
 						      (setq message "Class can't be as it has streams, first delete them and try again.")))
 						  (create-menubar)
 						  (grid-columnconfigure *tk* 0 :weight 1) 
@@ -213,7 +242,7 @@
 						    (let ((message "The stream has been deleted."))
 						      (handler-case (delete-stream (car stream))
 							(sqlite-constraint-error (err)
-							  (declare (ignorable err))
+							  (declare (ignore err))
 							  (setq message "The stream can't be deleted as it has subjects, first delete them and try again.")))
 						      (create-menubar)
 						      (grid-columnconfigure *tk* 0 :weight 1) 
@@ -254,7 +283,7 @@
 													(let ((message "The subject has been deleted"))
 													  (handler-case (delete-subject (car subject))
 													    (sqlite-constraint-error (err)
-													      (declare (ignorable err))
+													      (declare (ignore err))
 													      (setq message "The subject has papers, first delete them and try again.")))
 													  (create-menubar)
 													  (grid-columnconfigure *tk* 0 :weight 1) 
@@ -297,7 +326,7 @@
 													   (let ((message "The paper has been deleted"))
 													     (handler-case (delete-paper (car paper))
 													       (sqlite-constraint-error (err)
-														 (declare (ignorable err))
+														 (declare (ignore err))
 														 (setq message "The paper has dependant data, first delete them and try again.")))
 													     (create-menubar)
 													     (grid-columnconfigure *tk* 0 :weight 1) 
@@ -319,7 +348,7 @@
 					    (let ((message-text "House has been deleted."))
 					      (handler-case (|delete-house| (car house))
 						(sqlite-constraint-error (err)
-						  (declare (ignorable err))
+						  (declare (ignore err))
 						  (setq message-text "House can't be deleted as it has data depending on it, first delete them and try again.")))
 					      (create-menubar)
 					      (grid-columnconfigure *tk* 0 :weight 1) 
@@ -341,7 +370,7 @@
 					    (let ((message-text "Dorm has been deleted."))
 					      (handler-case (|delete-dorm| (car dorm))
 						(sqlite-constraint-error (err)
-						  (declare (ignorable err))
+						  (declare (ignore err))
 						  (setq message-text "Dorm can't be deleted as it has data depending on it, first delete them and try again.")))
 					      (create-menubar)
 					      (grid-columnconfigure *tk* 0 :weight 1) 
@@ -364,8 +393,6 @@
 	 (house-menu (make-instance 'menu :master *menubar* :text "Houses"))
 	 (dorm-menu (make-instance 'menu :master *menubar* :text "Dormitories"))
 	 )
-
-    (declare (ignorable paper-menu))
     (level-menu level-menu)
     (class-menu class-menu)
     (stream-menu stream-menu)
@@ -378,11 +405,12 @@
 
 (defun start ()
   "start the info application, try to create the tables, bind the error to continue execution if the tables are already present. enable foreign key support on the database"
-  (execute-non-query *db* "pragma foreign_keys = on")
+(conn 
+  (execute-non-query db "pragma foreign_keys = on") 
   (handler-case
-      (create-tables)
+      (create-tables db)
     (sqlite-error (err)
-      (declare (ignorable err))))
+      (declare (ignore err)))))
   (with-ltk ()
 					; (iconbitmap #p"/home/lam/common-lisp/school/favicon.ico")
     (create-menubar)
@@ -409,7 +437,7 @@
 										 (|update-level| (car level) (text level-entry))
 										 (handler-case (|save-level| (text level-entry))
 										   (sqlite-constraint-error (err)
-										     (declare (ignorable err))
+										     (declare (ignore err))
 										     (setq message (format nil "Not saved. A level named ~a already exists" (text level-entry))))))
 									     (create-menubar)
 									     (destroy *school-info-main-frame*)
@@ -437,7 +465,7 @@
 										 (|update-house| (car house) (text house-entry))
 										 (handler-case (|save-house| (text house-entry))
 										   (sqlite-constraint-error (err)
-										     (declare (ignorable err))
+										     (declare (ignore err))
 										     (setq message (format nil "Not saved. A house named ~a already exists" (text house-entry))))))
 									     (create-menubar)
 									     (destroy *school-info-main-frame*)
@@ -466,7 +494,7 @@
 										(|update-dorm| (car dorm) (text dorm-entry))
 										(handler-case (|save-dorm| (text dorm-entry))
 										  (sqlite-constraint-error (err)
-										    (declare (ignorable err))
+										    (declare (ignoreyerr))
 										    (setq message (format nil "Not saved. The dorm named ~a already exists" (text dorm-entry))))))
 									    (create-menubar)
 									    (destroy *school-info-main-frame*)
@@ -488,7 +516,7 @@
     (if levels
 	(let* (
 	       (level-label (make-instance 'label :master *school-info-main-frame* :text "Select Level"))
-	       (level-combobox (make-instance 'combobox :text (cadr level) :master *school-info-main-frame* :values (mapcar (lambda (x) (cadr x)) levels)))
+	       (level-combobox (make-instance 'combobox :text (cadar levels) :master *school-info-main-frame* :values (mapcar (lambda (x) (cadr x)) levels)))
 	       (class-label (make-instance 'label :master *school-info-main-frame* :text "Enter Class Name"))
 	       (class-entry (make-instance 'entry :master *school-info-main-frame* :text (cadr class)))
 	       (save-button (make-instance 'button :master *school-info-main-frame*
