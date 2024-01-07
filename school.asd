@@ -11,4 +11,7 @@
   :description "The application manager for the school application"
   :depends-on (:ltk :sqlite)
   :components ((:file "info")
-	       (:file "school")))
+	       (:file "school"))
+  :build-operation "program-op" ;; leave as is
+  :build-pathname "school-info"
+  :entry-point "school-info:start")
