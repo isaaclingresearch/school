@@ -13,6 +13,7 @@
 ;; DB ACCESS FUNCTIONS
 
 (defun create-tables (db)
+  (execute-non-query db "create table school_details (id integer primary key, detail_name text unique, detail text, added_on default current_timestamp)")
   (execute-non-query db "create table levels (id integer primary key, level text unique, added_on default current_timestamp)")
   (execute-non-query db "create table classes (id integer primary key, class text unique,  level_id integer, added_on default current_timestamp, foreign key (level_id) references levels (id))")
   (execute-non-query db "create table streams (id integer primary key, class_id integer, stream text unique, added_on default current_timestamp, foreign key (class_id) references classes (id))")
@@ -21,17 +22,18 @@
   ;; use stream is to ensure uniqueness as different classes can have the same stream
   (execute-non-query db "create table subjects (id integer primary key, subject text, stream_id integer, added_on default current_timestamp, foreign key (stream_id) references streams (id))")
   (execute-non-query db "create table papers (id integer primary key, paper text, subject_id integer, added_on default current_timestamp, foreign key (subject_id) references subjects (id))")
+  (save-school-details nil nil nil nil nil nil nil t) ; initialise the table so that we only use update statement.
   )
 
 ;; define macros to define the following functions for single entry forms
 (defmacro intern-name (var1 type)
   `(let ((action (case ,type
-		  (:get "get-~a")
-		  (:get-id "get-~a-id")
-		  (:delete "delete-~a")
-		  (:save "save-~a")
-		  (:update "update-~a"))))
-    (intern (format nil action ,var1))))
+		   (:get "get-~a")
+		   (:get-id "get-~a-id")
+		   (:delete "delete-~a")
+		   (:save "save-~a")
+		   (:update "update-~a"))))
+     (intern (format nil action ,var1))))
 
 (defmacro conn (&body body)
   `(with-open-database (db (uiop:native-namestring "~/common-lisp/school/db/school.db"))
@@ -58,6 +60,26 @@
 (make-functions-1 "level" "levels")
 (make-functions-1 "house" "houses")
 (make-functions-1 "dorm" "dorms")
+
+
+;; SCHOOL DETAILS
+(defun save-school-details (name motto location phone-number pobox fax email &optional init)
+  (conn
+    (dolist (detail (list (cons "name" name)
+			  (cons "motto" motto)
+			  (cons "location" location)
+			  (cons "phone_number" phone-number)
+			  (cons "pobox" pobox)
+			  (cons "fax" fax)
+			  (cons "email" email)))
+      (if init
+	  (execute-non-query db "insert into school_details (detail_name, detail) values (?, ?)" (car detail) (cdr detail))
+	  (execute-non-query db "update school_details set detail = ? where detail_name = ?" (cdr detail) (car detail))))))
+
+(defun get-school-details ()
+  (mapcar (lambda (detail)
+	    (cons (car detail) (cadr detail)))
+	  (conn (execute-to-list db "select detail_name, detail from school_details"))))
 
 ;; CLASS FUNCTIONS
 (defun get-classes (&optional level-id)
@@ -233,8 +255,8 @@
 	(dolist (class classes)
 	  (make-instance 'menubutton :master new-level-menu :text (cadr class) :command (lambda () (stream-form class)))
 	  (let* ((edit-class-menu (make-instance 'menu :master edit-level-menu :text (cadr class)))
-		  (delete-class-menu (make-instance 'menu :master delete-level-menu :text (cadr class)))
-		  (streams (get-streams (car class))))
+		 (delete-class-menu (make-instance 'menu :master delete-level-menu :text (cadr class)))
+		 (streams (get-streams (car class))))
 	    (dolist (stream streams)
 	      (make-instance 'menubutton :master edit-class-menu :text (cadr stream) :command (lambda () (stream-form class stream)))
 	      (make-instance 'menubutton :master delete-class-menu :text (cadr stream)
@@ -380,12 +402,16 @@
 					      (grid *school-info-main-frame* 0 0)
 					      (grid (make-instance 'label :master *school-info-main-frame* :text message-text) 1 0)))))))
 
+(defun details-menu (menu)
+  (make-instance 'menubutton :master menu :text "Edit details" :command (lambda () (details-form))))
+
 (defun create-menubar ()
   "create a new menu bar, if an old one exists, destroy it, then recreate a new one."
   (when *menubar*
     (destroy *menubar*))
-  (setq *menubar* (make-instance 'menubar)) 
-  (let* ((level-menu (make-instance 'menu :master *menubar* :text "Levels"))
+  (setq *menubar* (make-instance 'menubar))
+  (let* ((details (make-instance 'menu :master *menubar* :text "School details"))
+	 (level-menu (make-instance 'menu :master *menubar* :text "Levels"))
 	 (class-menu (make-instance 'menu :master *menubar* :text "Classes"))
 	 (stream-menu (make-instance 'menu :master *menubar* :text "Streams"))
 	 (subject-menu (make-instance 'menu :master *menubar* :text "Subjects"))
@@ -393,6 +419,7 @@
 	 (house-menu (make-instance 'menu :master *menubar* :text "Houses"))
 	 (dorm-menu (make-instance 'menu :master *menubar* :text "Dormitories"))
 	 )
+    (details-menu details)
     (level-menu level-menu)
     (class-menu class-menu)
     (stream-menu stream-menu)
@@ -405,12 +432,12 @@
 
 (defun start ()
   "start the info application, try to create the tables, bind the error to continue execution if the tables are already present. enable foreign key support on the database"
-(conn 
-  (execute-non-query db "pragma foreign_keys = on") 
-  (handler-case
-      (create-tables db)
-    (sqlite-error (err)
-      (declare (ignore err)))))
+  (conn 
+    (execute-non-query db "pragma foreign_keys = on") 
+    (handler-case
+	(create-tables db)
+      (sqlite-error (err)
+	(declare (ignore err)))))
   (with-ltk ()
 					; (iconbitmap #p"/home/lam/common-lisp/school/favicon.ico")
     (create-menubar)
@@ -420,6 +447,62 @@
       (setf (wm-state *tk*) 'zoomed))
     (wm-title *tk* "School Info")
     ))
+
+(defun details-form ()
+  (unless (null *school-info-main-frame*)
+    (ltk:destroy *school-info-main-frame*))
+  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  (flet ((get-detail (data key) (cdr (assoc key data :test #'string-equal))))
+    (let* ((data (get-school-details))
+	   (heading (make-instance 'label :master *school-info-main-frame* :text "Basic Information about the school."))
+	   (name-label (make-instance 'label :master *school-info-main-frame* :text "Name"))
+	   (name-entry (make-instance 'entry :master *school-info-main-frame* :text (get-detail data "name")))
+	   (motto-label (make-instance 'label :master *school-info-main-frame* :text "Motto"))
+	   (motto-entry (make-instance 'entry :master *school-info-main-frame* :text (get-detail data "motto")))
+	   (location-label (make-instance 'label :master *school-info-main-frame* :text "Location"))
+	   (location-entry (make-instance 'entry :master *school-info-main-frame* :text (get-detail data "location")))
+	   (phone-number-label (make-instance 'label :master *school-info-main-frame* :text "Phone Number"))
+	   (phone-number-entry (make-instance 'entry :master *school-info-main-frame* :text (get-detail data "phone_number")))
+	   (pobox-label (make-instance 'label :master *school-info-main-frame* :text "P.O. Box"))
+	   (pobox-entry (make-instance 'entry :master *school-info-main-frame* :text (get-detail data "pobox")))
+	   (fax-label (make-instance 'label :master *school-info-main-frame* :text "Fax"))
+	   (fax-entry (make-instance 'entry :master *school-info-main-frame* :text (get-detail data "fax")))
+	   (email-label (make-instance 'label :master *school-info-main-frame* :text "Email"))
+	   (email-entry (make-instance 'entry :master *school-info-main-frame* :text (get-detail data "email")))
+	   (save-button (make-instance 'button :master *school-info-main-frame*
+					       :text "Save School Details"
+					       :command (lambda ()
+							  (save-school-details (text name-entry)
+									       (text motto-entry)
+									       (text location-entry)
+									       (text phone-number-entry)
+									       (text pobox-entry)
+									       (text fax-entry)
+									       (text email-entry))
+							  (create-menubar)
+							  (destroy *school-info-main-frame*)
+							  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+							  (grid *school-info-main-frame* 0 0)
+							  (grid (make-instance 'label :master *school-info-main-frame* :text "The school details have been saved.") 1 0)
+							  ))))
+      (prepare-main-window)
+      (grid heading 0 0 :padx 10 :pady 5)
+      (grid  name-label 1 0 :padx 10 :pady 5)
+      (grid  name-entry 1 2 :padx 10 :pady 5)
+      (grid  motto-label 2 0 :padx 10 :pady 5)
+      (grid  motto-entry 2 2 :padx 10 :pady 5)
+      (grid  location-label 3 0 :padx 10 :pady 5)
+      (grid  location-entry 3 2 :padx 10 :pady 5)
+      (grid  phone-number-label 4 0 :padx 10 :pady 5)
+      (grid  phone-number-entry 4 2 :padx 10 :pady 5)
+      (grid  pobox-label 5 0 :padx 10 :pady 5)
+      (grid  pobox-entry 5 2 :padx 10 :pady 5)
+      (grid  fax-label 6 0 :padx 10 :pady 5)
+      (grid  fax-entry 6 2 :padx 10 :pady 5)
+      (grid  email-label 7 0 :padx 10 :pady 5)
+      (grid  email-entry 7 2 :padx 10 :pady 5)
+      (grid save-button 8 2 :pady 10))))
+
 
 (defun level-form (&optional level)
   "collect and process data about levels
