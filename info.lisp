@@ -1,7 +1,6 @@
 ;;; this defines the application for handling general school information.
 ;;; general school information means the basic structure of the school.
 
-;;; TOOD use foreign keys in the tables to ensure data integrity
 (defpackage :school-info
   (:use :cl :ltk :sqlite)
   (:export :start :create-tables))
@@ -213,7 +212,8 @@
 					      (destroy *school-info-main-frame*)
 					      (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
 					      (grid *school-info-main-frame* 0 0)
-					      (grid (make-instance 'label :master *school-info-main-frame* :text message-text) 1 0)))))))
+					      (grid (make-instance 'label :master *school-info-main-frame* :text message-text) 1 0))))))
+  (make-instance 'menubutton :master level-menu :text "Show levels" :command (lambda () (show-levels))))
 
 (defun class-menu (class-menu)
   (make-instance 'menubutton :master class-menu :text "New" :command (lambda () (class-form)))
@@ -403,7 +403,8 @@
 					      (grid (make-instance 'label :master *school-info-main-frame* :text message-text) 1 0)))))))
 
 (defun details-menu (menu)
-  (make-instance 'menubutton :master menu :text "Edit details" :command (lambda () (details-form))))
+  (make-instance 'menubutton :master menu :text "Edit details" :command (lambda () (details-form)))
+  (make-instance 'menubutton :master menu :text "Show details" :command (lambda () (show-details))))
 
 (defun create-menubar ()
   "create a new menu bar, if an old one exists, destroy it, then recreate a new one."
@@ -503,6 +504,48 @@
       (grid  email-entry 7 2 :padx 10 :pady 5)
       (grid save-button 8 2 :pady 10))))
 
+(defun show-details ()
+  "this displays the details of the school"
+  (unless (null *school-info-main-frame*)
+    (ltk:destroy *school-info-main-frame*))
+  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  (flet ((get-detail (data key) (cdr (assoc key data :test #'string-equal))))
+    (let* ((data (get-school-details))
+	   (heading (make-instance 'label :master *school-info-main-frame* :text "Basic Information about the school."))
+	   (name-label (make-instance 'label :master *school-info-main-frame* :text "Name"))
+	   (name-data (make-instance 'label :master *school-info-main-frame* :text (get-detail data "name")))
+	   (motto-label (make-instance 'label :master *school-info-main-frame* :text "Motto"))
+	   (motto-data (make-instance 'label :master *school-info-main-frame* :text (get-detail data "motto")))
+	   (location-label (make-instance 'label :master *school-info-main-frame* :text "Location"))
+	   (location-data (make-instance 'label :master *school-info-main-frame* :text (get-detail data "location")))
+	   (phone-number-label (make-instance 'label :master *school-info-main-frame* :text "Phone Number"))
+	   (phone-number-data (make-instance 'label :master *school-info-main-frame* :text (get-detail data "phone_number")))
+	   (pobox-label (make-instance 'label :master *school-info-main-frame* :text "P.O. Box"))
+	   (pobox-data (make-instance 'label :master *school-info-main-frame* :text (get-detail data "pobox")))
+	   (fax-label (make-instance 'label :master *school-info-main-frame* :text "Fax"))
+	   (fax-data (make-instance 'label :master *school-info-main-frame* :text (get-detail data "fax")))
+	   (email-label (make-instance 'label :master *school-info-main-frame* :text "Email"))
+	   (email-data (make-instance 'label :master *school-info-main-frame* :text (get-detail data "email")))
+	   (print-button (make-instance 'button :master *school-info-main-frame*
+					       :text "Print School Details")))
+      (prepare-main-window)
+      (grid heading 0 0 :padx 10 :pady 5)
+      (grid name-label 1 0 :padx 10 :pady 5)
+      (grid name-data 1 2 :padx 10 :pady 5)
+      (grid motto-label 2 0 :padx 10 :pady 5)
+      (grid motto-data 2 2 :padx 10 :pady 5)
+      (grid location-label 3 0 :padx 10 :pady 5)
+      (grid location-data 3 2 :padx 10 :pady 5)
+      (grid phone-number-label 4 0 :padx 10 :pady 5)
+      (grid phone-number-data 4 2 :padx 10 :pady 5)
+      (grid pobox-label 5 0 :padx 10 :pady 5)
+      (grid pobox-data 5 2 :padx 10 :pady 5)
+      (grid fax-label 6 0 :padx 10 :pady 5)
+      (grid fax-data 6 2 :padx 10 :pady 5)
+      (grid email-label 7 0 :padx 10 :pady 5)
+      (grid email-data 7 2 :padx 10 :pady 5)
+      (grid print-button 8 2 :pady 10))))
+
 
 (defun level-form (&optional level)
   "collect and process data about levels
@@ -531,6 +574,26 @@
     (grid  level-label 1 0 :padx 10 :pady 5)
     (grid level-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
     (grid save-button 2 2 :pady 10)))
+
+(defun show-levels ()
+  "Show levels of a school"
+  (unless (null *school-info-main-frame*)
+    (ltk:destroy *school-info-main-frame*))
+  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  ;;; define a local recursive function count, displays the levels one below the other
+  (prepare-main-window)
+  (labels ((show-level (levels count)
+	     (cond ((and (null levels) (eq count 1))
+		    (grid (make-instance 'label :master *school-info-main-frame* :text "No level has been yet.") 1 0 :padx 10 :pady 5))
+		   ((null levels) (grid (make-instance 'button :master *school-info-main-frame* :text "Print levels") count 2 :padx 10 :pady 5))
+		   (t
+		    (let* ((level (car levels))
+			  (name (cadr level))
+			  (level-label (make-instance 'label :master *school-info-main-frame* :text name)))
+		      (grid level-label count 0)
+		      (show-level (cdr levels) (+ count 1)))))))
+    (let ((levels (|get-level|)))
+      (show-level levels 1))))
 
 (defun house-form (&optional house)
   "collect and process data about houses
