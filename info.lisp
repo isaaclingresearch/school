@@ -274,7 +274,8 @@
 						      (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
 						      (grid *school-info-main-frame* 0 0)
 						      (grid (make-instance 'label :master *school-info-main-frame* :text message) 1 0))
-						    )))))))))
+						    ))))))))
+  (make-instance 'menubutton :master stream-menu :text "Show streams" :command (lambda () (show-streams))))
 
 (defun subject-menu (subject-menu)
   (let ((new-menu (make-instance 'menu :master subject-menu :text "New"))
@@ -760,6 +761,37 @@
 	  (prepare-main-window)
 	  (grid error-text 0 0 :padx 10 :pady 5))
 	)))
+
+(defun show-streams ()
+  "Show classes of levels of a school"
+  (unless (null *school-info-main-frame*)
+    (ltk:destroy *school-info-main-frame*))
+  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  (prepare-main-window)
+  ;;; define a local recursive function count, displays the levels one below the other
+  ;;; index keeps track of the row in the window to add widget to
+  (let ((index 1))
+    (labels ((show-stream (streams class number-of-streams)
+	       (cond ((and (null streams) (eq 0 number-of-streams))
+		      (grid (make-instance 'label :master *school-info-main-frame* :text (format nil "No streams yet for class: ~a" class)) index 2)
+		      (setq index (+ index 1)))
+		     ((null streams) ())
+		     (t (let* ((stream (car streams))
+			       (name (cadr stream)))
+			  (grid (make-instance 'label :master *school-info-main-frame* :text name) index 2)
+			  (setq index (+ 1 index))
+			  (show-stream (cdr streams) class number-of-streams)))))
+	     (show-class (classes)
+	       (cond ((and (null classes) (eq index 1))
+		      (grid (make-instance 'label :master *school-info-main-frame* :text "No class has been yet.") 1 0 :padx 10 :pady 5))
+		     ((null classes) (grid (make-instance 'button :master *school-info-main-frame* :text "Print Streams") index 2 :padx 10 :pady 5))
+		     (t
+		      (grid (make-instance 'label :master *school-info-main-frame* :text (cadar classes)) index 1 :padx 10 :pady 5)
+		      (setq index (+ index 1))
+		      (let ((streams (get-streams (caar classes))))
+			(show-stream streams (cadar classes) (length streams)))
+		      (show-class (cdr classes))))))
+      (show-class (get-classes)))))
 
 (defun subject-form (class-data stream-data &optional subject-data)
   "create a new subject; (= stream-data (cons stream stream_id class_id))
