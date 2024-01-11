@@ -240,7 +240,8 @@
 						  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
 						  (grid *school-info-main-frame* 0 0)
 						  (grid (make-instance 'label :master *school-info-main-frame* :text message) 1 0))
-						)))))))
+						))))))
+  (make-instance 'menubutton :master class-menu :text "Show classes" :command (lambda () (show-classes))))
 
 (defun stream-menu (stream-menu)  
   (let ((new-menu (make-instance 'menu :master stream-menu :text "New"))
@@ -662,20 +663,25 @@
     (if levels
 	(let* (
 	       (level-label (make-instance 'label :master *school-info-main-frame* :text "Select Level"))
-	       (level-combobox (make-instance 'combobox :text (cadar levels) :master *school-info-main-frame* :values (mapcar (lambda (x) (cadr x)) levels)))
+	       (level-combobox (make-instance 'combobox :text (if level (cadr level)
+								  (cadar levels)) :master *school-info-main-frame* :values (mapcar (lambda (x) (cadr x)) levels)))
 	       (class-label (make-instance 'label :master *school-info-main-frame* :text "Enter Class Name"))
 	       (class-entry (make-instance 'entry :master *school-info-main-frame* :text (cadr class)))
 	       (save-button (make-instance 'button :master *school-info-main-frame*
-						   :text "Save Class" :command (lambda ()
-										 (if class
-										     (update-class (car class) (text class-entry))
-										     (save-class (|get-level-id| (text level-combobox)) (text class-entry)))
-										 (create-menubar)
-										 (destroy *school-info-main-frame*)
-										 (format *standard-output* "~a" (text level-combobox))
-										 (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-										 (grid *school-info-main-frame* 0 0)
-										 (grid (make-instance 'label :master *school-info-main-frame* :text "The class has been saved.") 1 0)))))
+						   :text "Save Class" :command (let ((message "The class has been saved"))
+										 (lambda ()
+										   (if class
+										       (update-class (car class) (text class-entry))
+										       (handler-case 
+											   (save-class (|get-level-id| (text level-combobox)) (text class-entry))
+											 (sqlite-constraint-error (err)
+											   (declare (ignore err))
+											   (setq message (format nil "A class with name ~a already exists" (text class-entry))))))
+										   (create-menubar)
+										   (destroy *school-info-main-frame*)
+										   (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+										   (grid *school-info-main-frame* 0 0)
+										   (grid (make-instance 'label :master *school-info-main-frame* :text message) 1 0))))))
 	  (prepare-main-window)
 	  (grid level-label 0 0 :padx 10 :pady 5)
 	  (grid level-combobox 0 2 :padx 10 :pady 5)
@@ -686,6 +692,37 @@
 	  (prepare-main-window)
 	  (grid error-text 0 0 :padx 10 :pady 5))
 	)))
+
+(defun show-classes ()
+  "Show classes of levels of a school"
+  (unless (null *school-info-main-frame*)
+    (ltk:destroy *school-info-main-frame*))
+  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  (prepare-main-window)
+  ;;; define a local recursive function count, displays the levels one below the other
+  ;;; index keeps track of the row in the window to add widget to
+  (let ((index 1))
+    (labels ((show-class (classes level number-of-classes)
+	       (cond ((and (null classes) (eq 0 number-of-classes))
+		      (grid (make-instance 'label :master *school-info-main-frame* :text (format nil "No classes yet for level: ~a" level)) index 2)
+		      (setq index (+ index 1)))
+		     ((null classes) ())
+		     (t (let* ((class (car classes))
+			       (name (cadr class)))
+			  (grid (make-instance 'label :master *school-info-main-frame* :text name) index 2)
+			  (setq index (+ 1 index))
+			  (show-class (cdr classes)  level number-of-classes)))))
+	     (show-level (levels)
+	       (cond ((and (null levels) (eq index 1))
+		      (grid (make-instance 'label :master *school-info-main-frame* :text "No level has been yet.") 1 0 :padx 10 :pady 5))
+		     ((null levels) (grid (make-instance 'button :master *school-info-main-frame* :text "Print Classes") index 2 :padx 10 :pady 5))
+		     (t
+		      (grid (make-instance 'label :master *school-info-main-frame* :text (cadar levels)) index 1 :padx 10 :pady 5)
+		      (setq index (+ index 1))
+		      (let ((classes (get-classes (caar levels))))
+			(show-class classes (cadar levels) (length classes)))
+		      (show-level (cdr levels))))))
+      (show-level (|get-level|)))))
 
 (defun stream-form (class-data &optional stream-data)
   "collect and process data about streams. includes a combobox for selecting a class, every stream should be part of a class."
