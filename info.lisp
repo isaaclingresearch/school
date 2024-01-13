@@ -560,7 +560,10 @@
   (unless (null *school-info-main-frame*)
     (ltk:destroy *school-info-main-frame*))
   (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (let* (
+  (let* ((index 1)
+	 (level-entries ()) ; to collect the level entries displayed on the page
+	 (level-number-label (make-instance 'label :master *school-info-main-frame* :text "Enter number of levels"))
+	 (level-number-entry (make-instance 'entry :master *school-info-main-frame* :text "1"))
 	 (level-label (make-instance 'label :master *school-info-main-frame* :text "Enter Level Name"))
 	 (level-entry (make-instance 'entry :master *school-info-main-frame* :text (cadr level)))
 	 (save-button (make-instance 'button :master *school-info-main-frame*
@@ -576,11 +579,29 @@
 									     (destroy *school-info-main-frame*)
 									     (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
 									     (grid *school-info-main-frame* 0 0)
-									     (grid (make-instance 'label :master *school-info-main-frame* :text message) 1 0))))))
+									     (grid (make-instance 'label :master *school-info-main-frame* :text message) 1 0)))))
+	 (level-number-button (make-instance 'button :master *school-info-main-frame* :text "Change number"
+						     :command (lambda ()
+								(let ((number-of-levels (parse-integer (text level-number-entry))))
+								  (loop for i from 1 to (- number-of-levels 1) ; one is already present, so skip it
+									do (let ((new-level-label (make-instance 'label :master *school-info-main-frame* :text "Enter Level Name"))
+										 (new-level-entry (make-instance 'entry :master *school-info-main-frame*)))
+									     (setq level-entries (cons new-level-entry level-entries))
+									     (grid new-level-label index 0 :padx 10 :pady 5)
+									     (grid new-level-entry index 1 :sticky "ew" :columnspan 2 :padx 10 :pady 5)
+									     (setq index (+ 1 index)))
+									finally (grid save-button index 1 :pady 10) ; change the position of the save-button
+									     (setq index (+ 1 index))))))))
     (prepare-main-window)
-    (grid  level-label 1 0 :padx 10 :pady 5)
-    (grid level-entry 1 2 :padx 10 :pady 5 :sticky "e" :columnspan 5)
-    (grid save-button 2 2 :pady 10)))
+    (grid level-number-label 1 0 :padx 10 :pady 5)
+    (grid level-number-entry 1 1 :padx 10 :pady 5)
+    (grid level-number-button 1 2 :padx 10 :pady 5)
+    (grid  level-label 2 0 :padx 10 :pady 5)
+    (grid level-entry 2 1 :padx 10 :pady 5 :sticky "nsew" :columnspan 2)
+    (setq level-entries (cons level-entry level-entries))
+    (grid save-button 3 1 :pady 10)
+;;; set the index to be used when adding the extra level entries
+    (setq index 4)))
 
 (defun show-levels ()
   "Show levels of a school"
