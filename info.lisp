@@ -571,10 +571,12 @@
 									   (lambda ()
 									     (if level
 										 (|update-level| (car level) (text level-entry))
-										 (handler-case (|save-level| (text level-entry))
-										   (sqlite-constraint-error (err)
-										     (declare (ignore err))
-										     (setq message (format nil "Not saved. A level named ~a already exists" (text level-entry))))))
+										 ;; iterate over the level entries saving their values.
+										 (dolist (new-level level-entries)
+										   (handler-case (|save-level| (text (cdr new-level)))
+										     (sqlite-constraint-error (err)
+										       (declare (ignore err))
+										       (setq message (format nil "Not saved. A level named ~a already exists" (text (cdr new-level))))))))
 									     (create-menubar)
 									     (destroy *school-info-main-frame*)
 									     (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
@@ -583,22 +585,33 @@
 	 (level-number-button (make-instance 'button :master *school-info-main-frame* :text "Change number"
 						     :command (lambda ()
 								(let ((number-of-levels (parse-integer (text level-number-entry))))
-								  (loop for i from 1 to (- number-of-levels 1) ; one is already present, so skip it
-									do (let ((new-level-label (make-instance 'label :master *school-info-main-frame* :text "Enter Level Name"))
-										 (new-level-entry (make-instance 'entry :master *school-info-main-frame*)))
-									     (setq level-entries (cons new-level-entry level-entries))
-									     (grid new-level-label index 0 :padx 10 :pady 5)
-									     (grid new-level-entry index 1 :sticky "ew" :columnspan 2 :padx 10 :pady 5)
-									     (setq index (+ 1 index)))
-									finally (grid save-button index 1 :pady 10) ; change the position of the save-button
-									     (setq index (+ 1 index))))))))
+								  (cond ((eq 0 number-of-levels) ())
+									((< number-of-levels (length level-entries))
+									 (dolist (new-level (subseq level-entries 0 (- (length level-entries) number-of-levels)))
+									   (destroy (car new-level))
+									   (destroy (cdr new-level))
+									   (setq index (- index 1)))
+									 (grid save-button index 1 :pady 10)
+									 (setq index (+ 1 index)))
+									(t
+									 (loop for i from 1 to (- number-of-levels 1) ; one is already present, so skip it
+									       do (let ((new-level-label (make-instance 'label :master *school-info-main-frame* :text "Enter Level Name"))
+											(new-level-entry (make-instance 'entry :master *school-info-main-frame*)))
+										    (setq level-entries (cons (cons new-level-label new-level-entry) level-entries))
+										    (grid new-level-label index 0 :padx 10 :pady 5)
+										    (grid new-level-entry index 1 :sticky "ew" :columnspan 2 :padx 10 :pady 5)
+										    (setq index (+ 1 index)))
+									       finally (grid save-button index 1 :pady 10) ; change the position of the save-button
+										       (setq index (+ 1 index))))))))))
     (prepare-main-window)
-    (grid level-number-label 1 0 :padx 10 :pady 5)
-    (grid level-number-entry 1 1 :padx 10 :pady 5)
-    (grid level-number-button 1 2 :padx 10 :pady 5)
+    ;; show these when adding a new level
+    (unless level
+      (grid level-number-label 1 0 :padx 10 :pady 5)
+      (grid level-number-entry 1 1 :padx 10 :pady 5)
+      (grid level-number-button 1 2 :padx 10 :pady 5))
     (grid  level-label 2 0 :padx 10 :pady 5)
     (grid level-entry 2 1 :padx 10 :pady 5 :sticky "nsew" :columnspan 2)
-    (setq level-entries (cons level-entry level-entries))
+    (setq level-entries (cons (cons level-label level-entry) level-entries))
     (grid save-button 3 1 :pady 10)
 ;;; set the index to be used when adding the extra level entries
     (setq index 4)))
