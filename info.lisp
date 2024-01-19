@@ -2,7 +2,7 @@
 ;;; general school information means the basic structure of the school.
 
 (defpackage :school-info
-  (:use :cl :ltk :sqlite)
+  (:use :cl :ltk :sqlite :cl-pdf)
   (:export :start :create-tables))
 
 (in-package :school-info)
