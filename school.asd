@@ -12,7 +12,7 @@
   :depends-on (:ltk :sqlite :cl-pdf :cl-pdf-parser)
   :components ((:file "info")
 	       (:file "school")
-	       (:file "pdf-examples"))
+	       (:file "pdf"))
   :build-operation "program-op" ;; leave as is
   :build-pathname "school-info"
   :entry-point "school-info:start")

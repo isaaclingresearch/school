@@ -2,7 +2,8 @@
 ;;; general school information means the basic structure of the school.
 
 (defpackage :school-info
-  (:use :cl :ltk :sqlite :cl-pdf)
+  (:use :cl :sqlite :ltk :cl-pdf)
+  (:shadow cl-pdf:image cl-pdf:make-image cl-pdf:font-metrics cl-pdf:bbox cl-pdf:name cl-pdf:scale)
   (:export :start :create-tables))
 
 (in-package :school-info)
