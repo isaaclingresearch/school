@@ -22,7 +22,7 @@ sho-list displays a list of data on the page, takes data, an accessor function f
    "
   `(let ((y-position 841))
      (labels ((set-position (new-postion) (setf y-position new-postion))
-	      (show-list (data accessor spacing)
+	      (draw-list (data accessor spacing)
 		(dolist (datum data)
 		  (pdf:in-text-mode
 		    (set-position (- y-position (cdr spacing)))
@@ -56,15 +56,17 @@ sho-list displays a list of data on the page, takes data, an accessor function f
 	       )))
 	 (pdf:write-document ,file)))))
 
-(defun mine-2 ()
-  (page-template #p"~/common-lisp/school/mine-2.pdf"
-    (pdf:in-text-mode
-      (pdf:set-font helvetica 15.0)
-      (set-position (- y-position 15))
-      (pdf:move-text 50 y-position)
-      (pdf:draw-text "Houses:")
-      (pdf:set-font helvetica 10.0)
-      (show-list (get-houses) #'cadr (cons 100 15)))))
+(defun export-to-pdf (title pdf-path data-function result-function)
+  "this is a function to export the data to a pdf, it is provided with a title of the data, pdf-path is the path to save the pdf  and the data-function to call to get the data.
+the result-function to get the data to draw on the pdf" 
+  (page-template pdf-path
+		 (pdf:in-text-mode
+		  (pdf:set-font helvetica 15.0)
+		  (set-position (- y-position 15))
+		  (pdf:move-text 50 y-position)
+		  (pdf:draw-text title)
+		  (pdf:set-font helvetica 10.0)
+		  (draw-list (funcall data-function) result-function (cons 100 15)))))
 
 (defun mine-1 (&optional (file #P"~/common-lisp/school/mine.pdf"))
   "the header dividing line is at y-740, all data must be below that."
