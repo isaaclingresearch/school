@@ -226,9 +226,9 @@
 					  (grid-rowconfigure *tk* 0 :weight 1)
 					  (when *school-info-main-frame*
 					    (destroy *school-info-main-frame*))
-					 (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-					 (grid *school-info-main-frame* 0 0)
-					 (grid (make-instance 'label :master *school-info-main-frame* :text "The levels have been exported to pdf") 1 0)
+					  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+					  (grid *school-info-main-frame* 0 0)
+					  (grid (make-instance 'label :master *school-info-main-frame* :text "The levels have been exported to pdf") 1 0)
 					  )
 					)))
 
@@ -404,7 +404,19 @@
 					      (grid *school-info-main-frame* 0 0)
 					      (grid (make-instance 'label :master *school-info-main-frame* :text message-text) 1 0))))))
   (make-instance 'menubutton :master house-menu :text "Show houses" :command (lambda () (show-houses)))
-  (make-instance 'menubutton :master house-menu :text "Export to PDF"))
+  (make-instance 'menubutton :master house-menu :text "Export to PDF"
+			     :command (lambda ()
+					(let ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf")))))
+					  (export-to-pdf "Houses" pdf-path #'|get-house| #'cadr)
+					  (create-menubar)
+					  (grid-columnconfigure *tk* 0 :weight 1) 
+					  (grid-rowconfigure *tk* 0 :weight 1)
+					  (when *school-info-main-frame*
+					    (destroy *school-info-main-frame*))
+					  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+					  (grid *school-info-main-frame* 0 0)
+					  (grid (make-instance 'label :master *school-info-main-frame* :text "The houses have been exported to pdf") 1 0)
+					  ))))
 
 (defun dorm-menu (dorm-menu)
   (make-instance 'menubutton :master dorm-menu :text "New" :command (lambda () (dorm-form)))
@@ -428,7 +440,19 @@
 					      (grid *school-info-main-frame* 0 0)
 					      (grid (make-instance 'label :master *school-info-main-frame* :text message-text) 1 0))))))
   (make-instance 'menubutton :master dorm-menu :text "Show dorms" :command (lambda () (show-dorms)))
-  (make-instance 'menubutton :master dorm-menu :text "Export to PDF"))
+  (make-instance 'menubutton :master dorm-menu :text "Export to PDF"
+			     :command (lambda ()
+					(let ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf")))))
+					  (export-to-pdf "Dormitories" pdf-path #'|get-dorm| #'cadr)
+					  (create-menubar)
+					  (grid-columnconfigure *tk* 0 :weight 1) 
+					  (grid-rowconfigure *tk* 0 :weight 1)
+					  (when *school-info-main-frame*
+					    (destroy *school-info-main-frame*))
+					  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+					  (grid *school-info-main-frame* 0 0)
+					  (grid (make-instance 'label :master *school-info-main-frame* :text "The dormitories have been exported to pdf") 1 0)
+					  ))))
 
 (defun details-menu (menu)
   (make-instance 'menubutton :master menu :text "Edit details" :command (lambda () (details-form)))
