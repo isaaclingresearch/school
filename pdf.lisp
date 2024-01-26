@@ -32,17 +32,69 @@ draw-table displays data in a table, it is provided with with two args, a list o
 		    (set-y-position (- y-position (cdr spacing)))
 		    (pdf:move-text (car spacing) y-position)
 		    (pdf:draw-text (funcall accessor datum)))))
-	      (draw-table (title headings data)
-		(declare (ignore data title))
-		(pdf:in-text-mode
-		  (pdf:set-font helvetica 20.0)
+	      (draw-table (title headings data-1)
+		(let* ((x-max 0)
+		       (x-start 0) 
+		       (y-start y-position) ; the y-position at which table starts
+		       (x-end 0)
+		       (y-end 0)
+		       (dimensions-data ())
+		       (line-size+padding (+ 1 2 1))
+		       (total-x-line-size (* (length headings) line-size+padding))
+		       (total-y-line-size (* (length data-1) line-size+padding))
+		       (y-max (+ (* (length data-1) 25) total-y-line-size)))
+		  (dolist (heading headings)
+		    ;;; collect local x-max to set the width of the cells
+		    (let ((local-x-max 0)
+			  (heading-index (position heading headings :test #'equal))
+			  (heading-width (pdf::text-width heading helvetica 10.0)))
+		      (if (> heading-width local-x-max)
+			  (setq local-x-max heading-width))
+		      (dolist (datum data-1)
+			(let ((col-length (pdf::text-width (nth heading-index datum) helvetica 10.0)))
+			  (if (> col-length local-x-max)
+			      (setq local-x-max col-length))))
+		      (setq dimensions-data (cons local-x-max dimensions-data))))
+		  (setq dimensions-data (reverse dimensions-data))
+		  (setq x-max (+ (apply #'+ dimensions-data) total-x-line-size))
+		  (pdf:in-text-mode
+		    (pdf:set-font helvetica 20.0)
+		    (set-y-position (- y-position 20))
+		    (pdf:draw-centered-text 300 y-position title helvetica 20.0))
+		  ;;; center the table, get any remaining space on x, substract the total, divide by 2
+		  (when (> 595 x-max)
+		    (setq x-start (/ (- 595 x-max) 2)))
+		  (setq x-end (+ x-start x-max))
+		  (setq y-end (- y-position y-max 20)) ; see the upper borders start at -20 that this level
+		  ;; upper Table borders
 		  (set-y-position (- y-position 20))
-		  (pdf:draw-centered-text 300 y-position title helvetica 20.0))
-		(set-y-position (- y-position 10))
-		(pdf:move-to 0 y-position)
-		(pdf:line-to 595 y-position)
-		(pdf:stroke)
-		  ))
+		  (pdf:move-to x-start y-position)
+		  (pdf:line-to (- 595 x-start) y-position)
+		  (pdf:stroke)
+		  (set-y-position (- y-position 15))
+		  ;; the headings will be 4px above this, set y-start to this
+		  (setq y-start y-position)
+		  (pdf:move-to x-start y-position)
+		  (pdf:line-to (- 595 x-start) y-position)
+		  (pdf:stroke)
+		  ;; lower border
+		  (pdf:move-to x-start y-end)
+		  (pdf:line-to x-end y-end)
+		  (pdf:stroke)
+		  (print x-start)
+		  (print x-end)
+		  (print y-start)
+		  (print y-end)
+		  ;; headings
+		  (dolist (heading headings)
+		    (let* ((heading-index (position heading headings :test #'equal))
+			   (width (nth heading-index dimensions-data)))
+		      (pdf:in-text-mode
+			;; this is wrong code
+			(pdf:move-text (if (equal heading-index 0) (+ x-start 4) (+ x-start (* heading-index 4) width)) y-start)
+			(pdf:draw-text heading))))
+		  )
+		))
        (pdf:with-document ()
 	 (pdf:with-page ()
 	   (pdf:with-outline-level ("Example" (pdf:register-page-reference))
@@ -82,11 +134,11 @@ the result-function to get the data to draw on the pdf"
       (pdf:set-font helvetica 10.0)
       (draw-list (funcall data-function) result-function (cons 100 15)))))
 
-(defun export-table-to-pdf (title pdf-path hadings data)
+(defun export-table-to-pdf (title pdf-path hadings data-12)
   "this is a function to export the data to a pdf, it is provided with a title of the data, pdf-path is the path to save the pdf  and the data-function to call to get the data.
 the result-function to get the data to draw on the pdf" 
   (page-template pdf-path
-    (draw-table title hadings data)
+    (draw-table title hadings data-12)
     ))
 
 (defun mine-1 (&optional (file #P"~/common-lisp/school/mine.pdf"))
