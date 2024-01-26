@@ -18,21 +18,35 @@ when moving down the page, the size decreases to 0
 
 local functions:
 set-position sets the y-position of the page
-sho-list displays a list of data on the page, takes data, an accessor function for each member of the list and spacing as (cons x-position y-spacing)
+draw-list displays a list of data on the page, takes data, an accessor function for each member of the list and spacing as (cons x-position y-spacing)
+draw-table displays data in a table, it is provided with with two args, a list of column headings and a list of lists of data, the function displays data separated by lines, the lines are placed at the end of the widest element in that column.
    "
-  `(let ((y-position 841))
-     (labels ((set-position (new-postion) (setf y-position new-postion))
+  `(let ((y-position 841)
+	 (x-position 0)
+	 (helvetica (pdf:get-font "Helvetica")))
+     (labels ((set-y-position (new-postion) (setf y-position new-postion))
+	      (set-x-position (new-postion) (setf x-position new-postion))
 	      (draw-list (data accessor spacing)
-		(dolist (datum data)
-		  (pdf:in-text-mode
-		    (set-position (- y-position (cdr spacing)))
+		(pdf:in-text-mode
+		  (dolist (datum data)
+		    (set-y-position (- y-position (cdr spacing)))
 		    (pdf:move-text (car spacing) y-position)
-		    (pdf:draw-text (funcall accessor datum))))))
+		    (pdf:draw-text (funcall accessor datum)))))
+	      (draw-table (title headings data)
+		(declare (ignore data title))
+		(pdf:in-text-mode
+		  (pdf:set-font helvetica 20.0)
+		  (set-y-position (- y-position 20))
+		  (pdf:draw-centered-text 300 y-position title helvetica 20.0))
+		(set-y-position (- y-position 10))
+		(pdf:move-to 0 y-position)
+		(pdf:line-to 595 y-position)
+		(pdf:stroke)
+		  ))
        (pdf:with-document ()
 	 (pdf:with-page ()
 	   (pdf:with-outline-level ("Example" (pdf:register-page-reference))
-	     (let* ((helvetica (pdf:get-font "Helvetica"))
-		    (logo (make-jpeg-image "~/common-lisp/school/static/kawanda.jpeg"))
+	     (let* ((logo (make-jpeg-image "~/common-lisp/school/static/kawanda.jpeg"))
 		    (data (get-school-details))
 		    (school-name (cdr (assoc "name" data :test #'string-equal)))
 		    (pobox (cdr (assoc "pobox" data :test #'string-equal)))
@@ -51,7 +65,7 @@ sho-list displays a list of data on the page, takes data, an accessor function f
 		 (pdf:move-text 595 740)
 		 (pdf:polyline '((0 740) (595 740))) ; these are the default a4 sizes #(0 0 595 841)
 		 (pdf:stroke)
-		 (set-position 740))
+		 (set-y-position 740))
 	       ,@body
 	       )))
 	 (pdf:write-document ,file)))))
@@ -60,13 +74,20 @@ sho-list displays a list of data on the page, takes data, an accessor function f
   "this is a function to export the data to a pdf, it is provided with a title of the data, pdf-path is the path to save the pdf  and the data-function to call to get the data.
 the result-function to get the data to draw on the pdf" 
   (page-template pdf-path
-		 (pdf:in-text-mode
-		  (pdf:set-font helvetica 15.0)
-		  (set-position (- y-position 15))
-		  (pdf:move-text 50 y-position)
-		  (pdf:draw-text title)
-		  (pdf:set-font helvetica 10.0)
-		  (draw-list (funcall data-function) result-function (cons 100 15)))))
+    (pdf:in-text-mode
+      (pdf:set-font helvetica 15.0)
+      (set-y-position (- y-position 15))
+      (pdf:move-text 50 y-position)
+      (pdf:draw-text title)
+      (pdf:set-font helvetica 10.0)
+      (draw-list (funcall data-function) result-function (cons 100 15)))))
+
+(defun export-table-to-pdf (title pdf-path hadings data)
+  "this is a function to export the data to a pdf, it is provided with a title of the data, pdf-path is the path to save the pdf  and the data-function to call to get the data.
+the result-function to get the data to draw on the pdf" 
+  (page-template pdf-path
+    (draw-table title hadings data)
+    ))
 
 (defun mine-1 (&optional (file #P"~/common-lisp/school/mine.pdf"))
   "the header dividing line is at y-740, all data must be below that."

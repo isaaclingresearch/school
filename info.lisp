@@ -259,7 +259,20 @@
 						  (grid (make-instance 'label :master *school-info-main-frame* :text message) 1 0))
 						))))))
   (make-instance 'menubutton :master class-menu :text "Show classes" :command (lambda () (show-classes)))
-  (make-instance 'menubutton :master class-menu :text "Export to PDF"))
+  (make-instance 'menubutton :master class-menu :text "Export to PDF"
+		 			     :command (lambda ()
+					(let ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf")))))
+					  (export-to-pdf "Classes" pdf-path #'|get-level| #'cadr)
+					  (create-menubar)
+					  (grid-columnconfigure *tk* 0 :weight 1) 
+					  (grid-rowconfigure *tk* 0 :weight 1)
+					  (when *school-info-main-frame*
+					    (destroy *school-info-main-frame*))
+					  (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+					  (grid *school-info-main-frame* 0 0)
+					  (grid (make-instance 'label :master *school-info-main-frame* :text "The levels have been exported to pdf") 1 0)
+					  )
+					)))
 
 (defun stream-menu (stream-menu)  
   (let ((new-menu (make-instance 'menu :master stream-menu :text "New"))
