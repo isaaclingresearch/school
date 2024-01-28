@@ -26,31 +26,31 @@ draw-table displays data in a table, it is provided with with two args, a list o
 	 (helvetica (pdf:get-font "Helvetica")))
      (labels ((set-y-position (new-postion) (setf y-position new-postion))
 	      (set-x-position (new-postion) (setf x-position new-postion))
-	      (draw-list (data accessor spacing)
+	      (draw-list (list-data accessor-function spacing)
 		(pdf:in-text-mode
-		  (dolist (datum data)
+		  (dolist (datum list-data)
 		    (set-y-position (- y-position (cdr spacing)))
 		    (pdf:move-text (car spacing) y-position)
-		    (pdf:draw-text (funcall accessor datum)))))
-	      (draw-table (title headings data-1)
+		    (pdf:draw-text (funcall accessor-function datum)))))
+	      (draw-table (table-title table-headings table-data)
 		(let* ((x-max 0)
 		       (x-start 0) 
-		       (y-start y-position) ; the y-position at which table starts
+		       (y-start 0) ; the y-position at which table starts
 		       (x-end 0)
 		       (y-end 0)
 		       (dimensions-data ())
-		       (line-size+padding (+ 1 2 1))
-		       (total-x-line-size (* (length headings) line-size+padding))
-		       (total-y-line-size (* (length data-1) line-size+padding))
-		       (y-max (+ (* (length data-1) 25) total-y-line-size)))
-		  (dolist (heading headings)
+		       (line-size+padding (+ 1 2 1)) ;one pixel to each side of the line that is 2 pixels
+		       (total-x-line-size (* (length table-headings) line-size+padding))
+		       (total-y-line-size (* (length table-data) line-size+padding))
+		       (y-max (+ (* (length table-data) 25) total-y-line-size)))
+		  (dolist (heading table-headings)
 		    ;;; collect local x-max to set the width of the cells
 		    (let ((local-x-max 0)
-			  (heading-index (position heading headings :test #'equal))
+			  (heading-index (position heading table-headings :test #'equal))
 			  (heading-width (pdf::text-width heading helvetica 10.0)))
 		      (if (> heading-width local-x-max)
 			  (setq local-x-max heading-width))
-		      (dolist (datum data-1)
+		      (dolist (datum table-data)
 			(let ((col-length (pdf::text-width (nth heading-index datum) helvetica 10.0)))
 			  (if (> col-length local-x-max)
 			      (setq local-x-max col-length))))
@@ -59,21 +59,21 @@ draw-table displays data in a table, it is provided with with two args, a list o
 		  (setq x-max (+ (apply #'+ dimensions-data) total-x-line-size))
 		  (pdf:in-text-mode
 		    (pdf:set-font helvetica 20.0)
-		    (set-y-position (- y-position 20))
-		    (pdf:draw-centered-text 300 y-position title helvetica 20.0))
+		    (set-y-position (- y-position 20)) ; move the y-position 20 below the header line separator
+		    (pdf:draw-centered-text 300 y-position table-title helvetica 20.0)
+		    (set-y-position (- y-position 5)) ; move the y-position 10 below the title, this is the start of the table
+		    (setq y-start y-position) ; see line above
+		    )
 		  ;;; center the table, get any remaining space on x, substract the total, divide by 2
 		  (when (> 595 x-max)
 		    (setq x-start (/ (- 595 x-max) 2)))
 		  (setq x-end (+ x-start x-max))
-		  (setq y-end (- y-position y-max 20)) ; see the upper borders start at -20 that this level
+		  (setq y-end (- y-position y-max 10)) ; see the upper borders start at -10 that this level
 		  ;; upper Table borders
-		  (set-y-position (- y-position 20))
 		  (pdf:move-to x-start y-position)
 		  (pdf:line-to (- 595 x-start) y-position)
 		  (pdf:stroke)
-		  (set-y-position (- y-position 15))
-		  ;; the headings will be 4px above this, set y-start to this
-		  (setq y-start y-position)
+		  (set-y-position (- y-position 10)) ; move 10 below the starting y-position for the headings, rows are 10 high
 		  (pdf:move-to x-start y-position)
 		  (pdf:line-to (- 595 x-start) y-position)
 		  (pdf:stroke)
@@ -81,18 +81,37 @@ draw-table displays data in a table, it is provided with with two args, a list o
 		  (pdf:move-to x-start y-end)
 		  (pdf:line-to x-end y-end)
 		  (pdf:stroke)
-		  (print x-start)
-		  (print x-end)
-		  (print y-start)
-		  (print y-end)
 		  ;; headings
-		  (dolist (heading headings)
-		    (let* ((heading-index (position heading headings :test #'equal))
+		  (pdf:set-font helvetica 10.0)
+		  (set-x-position x-start) ; start at the beginning of the table
+		  ;; y-position is constant for the headers, they are on the same line
+		  (dolist (heading table-headings)
+		    (let* ((heading-index (position heading table-headings :test #'equal))
 			   (width (nth heading-index dimensions-data)))
 		      (pdf:in-text-mode
 			;; this is wrong code
-			(pdf:move-text (if (equal heading-index 0) (+ x-start 4) (+ x-start (* heading-index 4) width)) y-start)
-			(pdf:draw-text heading))))
+			(pdf:move-text x-position y-position)
+			(pdf:draw-text heading)
+			(set-x-position (+ x-position width)) ; increase the x-position by the current width text to go to next cell
+			)))
+		  ;; data
+		  (setq y-position (- y-position 10)) ; set the y-position at 10 pixels below the headings
+		  (dolist (row-data table-data) ; iterate over all the data provided
+		    ;; note that all row data must be on a constant y-position
+		  (set-x-position x-start) ; set the x-position at x-start at every iteration
+		    (dolist (cell-data row-data) ;iterate over the data provided for each row
+		      (let* ((cell-index (position cell-data row-data :test #'equal))
+			     (width (nth cell-index dimensions-data)))
+			(pdf:in-text-mode
+			  ;; each row is 10 pixels high
+			  ;; so move y to correspond to the actual height below the headings
+			  (pdf:move-text x-position y-position)
+			  (pdf:draw-text cell-data)
+			  ;; these have not yet accounted for the space occupied by the table lines
+			  (set-x-position (+ x-position width)) ; move the x-position to after the width of the current text
+			  )))
+		      (set-y-position (- y-position 10)) ; since we are moving down, the height of each cell is 10, move down by ten 
+			)
 		  )
 		))
        (pdf:with-document ()
