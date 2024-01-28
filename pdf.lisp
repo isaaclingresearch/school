@@ -42,12 +42,12 @@ draw-table displays data in a table, it is provided with with two args, a list o
 		       (line-size+padding (+ 1 2 1)) ;one pixel to each side of the line that is 2 pixels
 		       (total-x-line-size (* (length table-headings) line-size+padding))
 		       (total-y-line-size (* (length table-data) line-size+padding))
-		       (y-max (+ (* (length table-data) 25) total-y-line-size)))
+		       (y-max (+ (* (length table-data) 15) total-y-line-size))) ; each row is 15px high, so ,multiply and add spacing
 		  (dolist (heading table-headings)
 		    ;;; collect local x-max to set the width of the cells
 		    (let ((local-x-max 0)
 			  (heading-index (position heading table-headings :test #'equal))
-			  (heading-width (pdf::text-width heading helvetica 10.0)))
+			  (heading-width (pdf::text-width heading helvetica 11.0)))
 		      (if (> heading-width local-x-max)
 			  (setq local-x-max heading-width))
 		      (dolist (datum table-data)
@@ -68,12 +68,12 @@ draw-table displays data in a table, it is provided with with two args, a list o
 		  (when (> 595 x-max)
 		    (setq x-start (/ (- 595 x-max) 2)))
 		  (setq x-end (+ x-start x-max))
-		  (setq y-end (- y-position y-max 10)) ; see the upper borders start at -10 that this level
+		  (setq y-end (- y-start y-max 15)) ; from y-start, move to max length and then add 10 for the last row to draw the line
 		  ;; upper Table borders
 		  (pdf:move-to x-start y-position)
 		  (pdf:line-to (- 595 x-start) y-position)
 		  (pdf:stroke)
-		  (set-y-position (- y-position 10)) ; move 10 below the starting y-position for the headings, rows are 10 high
+		  (set-y-position (- y-position 15)) ; move 15 below the starting y-position for the headings, rows are 15 high
 		  (pdf:move-to x-start y-position)
 		  (pdf:line-to (- 595 x-start) y-position)
 		  (pdf:stroke)
@@ -81,38 +81,64 @@ draw-table displays data in a table, it is provided with with two args, a list o
 		  (pdf:move-to x-start y-end)
 		  (pdf:line-to x-end y-end)
 		  (pdf:stroke)
+		  ;; left border
+		  (pdf:move-to x-start y-start)
+		  (pdf:line-to x-start y-end)
+		  (pdf:stroke)
+		  ;; right border
+		  (pdf:move-to x-end y-start)
+		  (pdf:line-to x-end y-end)
+		  (pdf:stroke)
 		  ;; headings
-		  (pdf:set-font helvetica 10.0)
-		  (set-x-position x-start) ; start at the beginning of the table
+		  (pdf:set-font helvetica 11.0)
+		  (set-x-position (+ 1 x-start)) ; start at the beginning of the table, move away from the line by 1
 		  ;; y-position is constant for the headers, they are on the same line
 		  (dolist (heading table-headings)
 		    (let* ((heading-index (position heading table-headings :test #'equal))
 			   (width (nth heading-index dimensions-data)))
 		      (pdf:in-text-mode
 			;; this is wrong code
-			(pdf:move-text x-position y-position)
+			(pdf:move-text x-position (+ y-position 3)) ; add to put the headings up a bit
 			(pdf:draw-text heading)
-			(set-x-position (+ x-position width)) ; increase the x-position by the current width text to go to next cell
+			(set-x-position (+ x-position width 4)) ; increase the x-position by the current width text to go to next cell 4 is 1 for left padding, 2 for line and 1 for tight padding
 			)))
 		  ;; data
-		  (setq y-position (- y-position 10)) ; set the y-position at 10 pixels below the headings
+		  (pdf:set-font helvetica 10.0)
+		  (setq y-position (- y-position 15)) ; set the y-position at 15 pixels below the headings
 		  (dolist (row-data table-data) ; iterate over all the data provided
 		    ;; note that all row data must be on a constant y-position
-		  (set-x-position x-start) ; set the x-position at x-start at every iteration
+		    (set-x-position (+ 1 x-start)) ; set the x-position at x-start + 1 to move a little away from the start line at every iteration
 		    (dolist (cell-data row-data) ;iterate over the data provided for each row
 		      (let* ((cell-index (position cell-data row-data :test #'equal))
 			     (width (nth cell-index dimensions-data)))
 			(pdf:in-text-mode
 			  ;; each row is 10 pixels high
 			  ;; so move y to correspond to the actual height below the headings
-			  (pdf:move-text x-position y-position)
+			  (pdf:move-text x-position (+ y-position 2)) ; raise the text a little bit
 			  (pdf:draw-text cell-data)
 			  ;; these have not yet accounted for the space occupied by the table lines
-			  (set-x-position (+ x-position width)) ; move the x-position to after the width of the current text
+			  (set-x-position (+ x-position width 4)) ; move the x-position to after the width of the current text
 			  )))
-		      (set-y-position (- y-position 10)) ; since we are moving down, the height of each cell is 10, move down by ten 
-			)
-		  )
+		    ;; draw the horizontal rule to separate the row, except for the last one as it has a lower border on it
+		    (unless (equal (car (last table-data)) row-data)
+		      (set-y-position (- y-position 2)) ; move below the text by 2
+		      (pdf:move-to x-start y-position)
+		      (pdf:line-to x-end y-position)
+		      (pdf:stroke))
+		    ;; move to the next line
+		    (set-y-position (- y-position 15 2)) ; since we are moving down, the height of each cell is 15, move down by 15 to the next row and by 2 as you've alrady moved by 2 for the line to make 4 for line and padding
+		    )
+		  ;; draw vertical rules to separate the cells
+		  (set-x-position x-start) ; start at the beginning of the tab
+		  (dolist (dimension dimensions-data)
+		    (unless (equal dimension (car (last dimensions-data))) ; dont draw the last line
+		      (set-x-position (+ x-position dimension 2)) ; set the position at 2 right of the text in the current cell
+		      (pdf:move-to x-position y-start)
+		      (pdf:line-to x-position y-end)
+		      (pdf:stroke))
+		    (set-x-position (+ x-position 2)) ; set the remaining 2px to properly space the rules
+		    ) 
+      		  )
 		))
        (pdf:with-document ()
 	 (pdf:with-page ()
