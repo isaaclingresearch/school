@@ -144,12 +144,12 @@ draw-table displays data in a table, it is provided with with two args, a list o
 	 (pdf:with-page ()
 	   (pdf:with-outline-level ("Example" (pdf:register-page-reference))
 	     (let* ((logo (make-jpeg-image "~/common-lisp/school/static/kawanda.jpeg"))
-		    (data (get-school-details))
-		    (school-name (cdr (assoc "name" data :test #'string-equal)))
-		    (pobox (cdr (assoc "pobox" data :test #'string-equal)))
-		    (email (cdr (assoc "email" data :test #'string-equal)))
-		    (phone-number (cdr (assoc "phone_number" data :test #'string-equal)))
-		    (location (cdr (assoc "location" data :test #'string-equal)))
+		    (school-details (get-school-details))
+		    (school-name (cdr (assoc "name" school-details :test #'string-equal)))
+		    (pobox (cdr (assoc "pobox" school-details :test #'string-equal)))
+		    (email (cdr (assoc "email" school-details :test #'string-equal)))
+		    (phone-number (cdr (assoc "phone_number" school-details :test #'string-equal)))
+		    (location (cdr (assoc "location" school-details :test #'string-equal)))
 		    )
 	       (pdf:add-images-to-page logo)
 	       (pdf:draw-image logo 10 750 70 200 0 t)
@@ -179,11 +179,11 @@ the result-function to get the data to draw on the pdf"
       (pdf:set-font helvetica 10.0)
       (draw-list (funcall data-function) result-function (cons 100 15)))))
 
-(defun export-table-to-pdf (title pdf-path hadings data-12)
+(defun export-table-to-pdf (title pdf-path headings data)
   "this is a function to export the data to a pdf, it is provided with a title of the data, pdf-path is the path to save the pdf  and the data-function to call to get the data.
 the result-function to get the data to draw on the pdf" 
   (page-template pdf-path
-    (draw-table title hadings data-12)
+    (draw-table title headings data)
     ))
 
 (defun mine-1 (&optional (file #P"~/common-lisp/school/mine.pdf"))
