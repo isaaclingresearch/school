@@ -32,6 +32,38 @@ draw-table displays data in a table, it is provided with with two args, a list o
 		    (set-y-position (- y-position (cdr spacing)))
 		    (pdf:move-text (car spacing) y-position)
 		    (pdf:draw-text (funcall accessor-function datum)))))
+	      (count-rows (rows count)
+		"count the number of rows, count the subrows eg. '((1 (1 2 3))) returns length 3, as the first share a line."
+		(cond ((null rows) (print count) count)
+		      ((and (listp (car rows)) (not (listp (caar rows))) (listp (cadar rows)))
+		       (count-rows (cdr rows) (+ count (count-rows (cadar rows) 0))))
+		      ((listp (car rows)) (count-rows (cdr rows) (+ count (count-rows (car rows) 0))))
+		      (t (count-rows (cdr rows) (+ count 1)))))
+	      (draw-cell (cell dimensions x-start y-start)
+		(cond ((null cell) nil)
+		      (t
+		       (if (listp cell)
+			   (progn
+			     (draw-cell (car cell) dimensions x-start y-start)
+			     (pdf:move-to (- x-start 2) (+ y-start 15 2)) ; move to 2 below the row
+			     (pdf:line-to (+ x-start dimensions 4) (+ y-start 15 2)) ; draw separator to the end of the cell
+			     (pdf:stroke)
+			     (unless (null (cdr cell))
+			       (set-y-position (- y-position 15 2))) ; move down to the next line, exept when it's the last one
+			     (draw-cell (cdr cell) dimensions x-start y-position); draw a line separating the cells
+			     )
+			   (progn (pdf:in-text-mode
+				    (pdf:move-text (+ 1 x-start) (+ 2 y-start)) ; add 1 and 2 for spacing
+				    (pdf:draw-text cell))
+				  (set-x-position (+ x-position dimensions 4)) ;move to the next cell
+				  )))))
+	      (draw-row (row dimensions x-start y-start)
+		"row is a list of cells, which maybe lists too, we use row height of 15 + 1 left padding + 2 for the line + 1 for the right padding"
+		(set-y-position y-start)
+		(set-x-position x-start)
+		(dolist (cell row)
+		  (let ((cell-dimensions (nth (position cell row :test #'equal) dimensions)))
+		    (draw-cell cell cell-dimensions x-position y-position))))
 	      (draw-table (table-title table-headings table-data)
 		(let* ((x-max 0)
 		       (x-start 0) 
@@ -42,18 +74,25 @@ draw-table displays data in a table, it is provided with with two args, a list o
 		       (line-size+padding (+ 1 2 1)) ;one pixel to each side of the line that is 2 pixels
 		       (total-x-line-size (* (length table-headings) line-size+padding))
 		       (total-y-line-size (* (length table-data) line-size+padding))
-		       (y-max (+ (* (length table-data) 15) total-y-line-size))) ; each row is 15px high, so ,multiply and add spacing
+		       (y-max (+ (* (count-rows table-data 0) 15) total-y-line-size))) ; each row is 15px high, so ,multiply and add spacing
 		  (dolist (heading table-headings)
-		    ;;; collect local x-max to set the width of the cells
+;;; collect local x-max to set the width of the cells
 		    (let ((local-x-max 0)
 			  (heading-index (position heading table-headings :test #'equal))
 			  (heading-width (pdf::text-width heading helvetica 11.0)))
 		      (if (> heading-width local-x-max)
 			  (setq local-x-max heading-width))
 		      (dolist (datum table-data)
-			(let ((col-length (pdf::text-width (nth heading-index datum) helvetica 10.0)))
-			  (if (> col-length local-x-max)
-			      (setq local-x-max col-length))))
+			;; if element in datum at position heading-index is a list, iterate throught the list to find the largest one
+			(let ((datum-at-position (nth heading-index datum)))
+			  (if (listp datum-at-position)
+			      (dolist (datum-text datum-at-position)
+				(let ((datum-text-length (pdf::text-width datum-text helvetica 10.0)))
+				  (if (> datum-text-length local-x-max)
+				      (setq local-x-max datum-text-length))))
+			      (let ((datum-length (pdf::text-width datum-at-position helvetica 10.0)))
+				(if (> datum-length local-x-max)
+				    (setq local-x-max datum-length))))))
 		      (setq dimensions-data (cons local-x-max dimensions-data))))
 		  (setq dimensions-data (reverse dimensions-data))
 		  (setq x-max (+ (apply #'+ dimensions-data) total-x-line-size))
@@ -62,9 +101,9 @@ draw-table displays data in a table, it is provided with with two args, a list o
 		    (set-y-position (- y-position 20)) ; move the y-position 20 below the header line separator
 		    (pdf:draw-centered-text 300 y-position table-title helvetica 20.0)
 		    (set-y-position (- y-position 5)) ; move the y-position 10 below the title, this is the start of the table
-		    (setq y-start y-position) ; see line above
+		    (setq y-start y-position)	      ; see line above
 		    )
-		  ;;; center the table, get any remaining space on x, substract the total, divide by 2
+;;; center the table, get any remaining space on x, substract the total, divide by 2
 		  (when (> 595 x-max)
 		    (setq x-start (/ (- 595 x-max) 2)))
 		  (setq x-end (+ x-start x-max))
@@ -106,19 +145,7 @@ draw-table displays data in a table, it is provided with with two args, a list o
 		  (pdf:set-font helvetica 10.0)
 		  (setq y-position (- y-position 15)) ; set the y-position at 15 pixels below the headings
 		  (dolist (row-data table-data) ; iterate over all the data provided
-		    ;; note that all row data must be on a constant y-position
-		    (set-x-position (+ 1 x-start)) ; set the x-position at x-start + 1 to move a little away from the start line at every iteration
-		    (dolist (cell-data row-data) ;iterate over the data provided for each row
-		      (let* ((cell-index (position cell-data row-data :test #'equal))
-			     (width (nth cell-index dimensions-data)))
-			(pdf:in-text-mode
-			  ;; each row is 10 pixels high
-			  ;; so move y to correspond to the actual height below the headings
-			  (pdf:move-text x-position (+ y-position 2)) ; raise the text a little bit
-			  (pdf:draw-text cell-data)
-			  ;; these have not yet accounted for the space occupied by the table lines
-			  (set-x-position (+ x-position width 4)) ; move the x-position to after the width of the current text
-			  )))
+		    (draw-row row-data dimensions-data x-start y-position)
 		    ;; draw the horizontal rule to separate the row, except for the last one as it has a lower border on it
 		    (unless (equal (car (last table-data)) row-data)
 		      (set-y-position (- y-position 2)) ; move below the text by 2
