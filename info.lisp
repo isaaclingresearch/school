@@ -316,7 +316,26 @@
 						      (grid (make-instance 'label :master *school-info-main-frame* :text message) 1 0))
 						    ))))))))
   (make-instance 'menubutton :master stream-menu :text "Show streams" :command (lambda () (show-streams)))
-  (make-instance 'menubutton :master stream-menu :text "Export to PDF"))
+  (make-instance 'menubutton :master class-menu :text "Export to PDF"
+		 	     :command (lambda ()
+					(let* ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf"))))
+					       (levels (|get-level|))
+					       (class-data (mapcar (lambda (level)
+								     "map the to its classes to a tuple (level (class-1 ...))"
+								     (list (cadr level) (mapcar #'cadr (get-classes (car level)))))
+								   levels)))
+					  (unless (equal "" pdf-path)
+					    (export-table-to-pdf "Streams" pdf-path '("Level" "Classes" "Streams") class-data)
+					    (create-menubar)
+					    (grid-columnconfigure *tk* 0 :weight 1) 
+					    (grid-rowconfigure *tk* 0 :weight 1)
+					    (when *school-info-main-frame*
+					      (destroy *school-info-main-frame*))
+					    (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+					    (grid *school-info-main-frame* 0 0)
+					    (grid (make-instance 'label :master *school-info-main-frame* :text "The classes have been exported to pdf") 1 0))
+					  )
+					)))
 
 (defun subject-menu (subject-menu)
   (let ((new-menu (make-instance 'menu :master subject-menu :text "New"))

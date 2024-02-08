@@ -73,7 +73,7 @@ draw-table displays data in a table, it is provided with with two args, a list o
 		       (dimensions-data ())
 		       (line-size+padding (+ 1 2 1)) ;one pixel to each side of the line that is 2 pixels
 		       (total-x-line-size (* (length table-headings) line-size+padding))
-		       (total-y-line-size (* (length table-data) line-size+padding))
+		       (total-y-line-size (* (count-rows table-data 0) line-size+padding))
 		       (y-max (+ (* (count-rows table-data 0) 15) total-y-line-size))) ; each row is 15px high, so ,multiply and add spacing
 		  (dolist (heading table-headings)
 ;;; collect local x-max to set the width of the cells
