@@ -316,7 +316,7 @@
 						      (grid (make-instance 'label :master *school-info-main-frame* :text message) 1 0))
 						    ))))))))
   (make-instance 'menubutton :master stream-menu :text "Show streams" :command (lambda () (show-streams)))
-  (make-instance 'menubutton :master class-menu :text "Export to PDF"
+  (make-instance 'menubutton :master stream-menu :text "Export to PDF"
 		 	     :command (lambda ()
 					(let* ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf"))))
 					       (levels (|get-level|))
