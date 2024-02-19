@@ -1,12 +1,12 @@
 ;;; this defines the application for handling general school information.
 ;;; general school information means the basic structure of the school.
 
-(defpackage :school-info
+(defpackage :school.info
   (:use :cl :sqlite :ltk :cl-pdf :str)
   (:shadow cl-pdf:image cl-pdf:make-image cl-pdf:font-metrics cl-pdf:bbox cl-pdf:name cl-pdf:scale str:repeat)
   (:export :start :create-tables))
 
-(in-package :school-info)
+(in-package :school.info)
 
 (defparameter *school-info-main-frame* nil)		
 

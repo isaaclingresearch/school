@@ -3,7 +3,7 @@
 ;;; You can reach me at marc.battyani@fractalconcept.com or marc@battyani.net
 ;;; The homepage of cl-pdf is here: http://www.fractalconcept.com/asp/html/cl-pdf.html
 
-(in-package :school-info)
+(in-package :school.info)
 (defun row-length (row)
   (reduce #'max (mapcar (lambda (cell) (if (listp cell)
                                            (length cell)
@@ -71,16 +71,17 @@
                     (pdf:move-text (car spacing) y-position)
                     (pdf:draw-text (funcall accessor-function datum)))))
               (draw-subcells (subcells dimensions x-start y-start)
-                (when cell
+		(print `("subcells" ,subcells ,dimensions ,x-start ,y-start))
+                (when subcells
                   (progn (pdf:in-text-mode
                            (pdf:move-text (+ 1 x-start) (+ 2 y-start))
                            (pdf:draw-text (car subcells))
-                           (set-y-position (- y-position 15 2)))
-                         (when (cdr cell)
-                           (pdf:move-to (- x-start 2) (- y-start 15 2)); move to 2 below the rwo
-                           (pdf:line-to (+ x-start dimensions 4) (- y-start 15 2)); draw separator to the end of the cell
+                           (set-y-position (- y-start 2)))
+                         (when (cdr subcells)
+                           (pdf:move-to (- x-start 2) y-position) ; move to 2 below the rwo
+                           (pdf:line-to (+ x-start dimensions 4) y-position) ; draw separator to the end of the cell
                            (pdf:stroke)
-                           (set-y-position (- y-position 2))
+                           (set-y-position (- y-position 15 2))
                            )
                          (draw-subcells (cdr subcells) dimensions x-start y-position))))
               (draw-cell (cell dimensions x-start y-start)
@@ -116,7 +117,7 @@
                 (cond ((equal (length rows) 1))
                       (t (let* ((number-of-cells (row-length (car rows)))
 				;; subtruct 1 from the numer-of-cells because each row is suppossed to be of height 1, if it's not, then add on the height for extra cells
-                                (y-end (- y-start 15 2 (* (- number-of-cells 1) (+ 15 1 1 2)))))
+                                (y-end (- y-start 15 4 (* (- number-of-cells 1) (+ 15 1 1 2)))))
                            (print y-end)
 			   (print number-of-cells)
                            (pdf:in-text-mode
