@@ -51,7 +51,7 @@
                     (pdf:set-font helvetica 20.0)
                     (set-y-position (- y-position 20)) ; move the y-position 20 below the header line separator
                     (pdf:draw-centered-text 300 y-position table-title helvetica 20.0)
-                    (set-y-position (- y-position 5)) ; move the y-position 10 below the title, this is the start of the table
+                    (set-y-position (- y-position 5)) ; move the y-position 5 below the title, this is the start of the table
                     (setq y-start y-position)	      ; see line above
                     )
 		  
@@ -59,13 +59,13 @@
                   (when (> 595 x-max)
                     (setq x-start (/ (- 595 x-max) 2)))
                   (setq x-end (+ x-start x-max))
-                  (setq y-end (- y-start y-max 15)) ; from y-start, move to max length and then add 10 for the last row to draw the line
+                  (setq y-end (- y-start y-max 15 12)) ; from y-start, move to max length and then add 10 for the last row to draw the line
 
-		  ;; upper Table borders
+		  ;; upper two Table borders, top most line and line below headings
                   (pdf:move-to x-start y-position)
                   (pdf:line-to (- 595 x-start) y-position)
                   (pdf:stroke)
-                  (set-y-position (- y-position 15)) ; move 15 below the starting y-position for the headings, rows are 15 high
+                  (set-y-position (- y-position 15)) ; move 15+12 below the starting y-position for the headings
                   (pdf:move-to x-start y-position)
                   (pdf:line-to (- 595 x-start) y-position)
                   (pdf:stroke)
@@ -89,6 +89,7 @@
                   (pdf:set-font helvetica 11.0)
                   (set-x-position x-start) ; start at the beginning of the table
 		  ;; y-position is constant for the headers, they are on the same line
+		  ;; we use a closure because headings maybe duplicated, we can't go wrong while counting
 		  (let ((pos 0))
                     (dolist (heading table-headings)
 		      (let* ((width (nth pos dimensions-data)))
@@ -102,12 +103,13 @@
 
                   ;; data
                   (pdf:set-font helvetica 10.0)
-                  (setq y-position (- y-position 15)) ; set the y-position at 15 pixels below the headings
+                  (setq y-position (- y-start 15 12 15)) ; set the y-position at 15 pixels below the headings
                   (dolist (row-data table-data) ; iterate over all the data provided
                     (draw-row row-data dimensions-data x-start y-position))
 
 		  ;; draw row-separators
-                  (set-y-position (- y-start 15)) ; account for the headings when drawing row separators
+		  (print y-start)
+                  (set-y-position (- y-start 15 12)) ; account for the headings when drawing row separators
                   (draw-row-separators table-data x-start x-end y-position)
 
 		  ;; draw vertical rules to separate the cells
@@ -162,14 +164,14 @@
                     (let ((cell-dimensions (nth (position cell row :test #'equal) dimensions)))
                       (draw-cell cell cell-dimensions x-position y-position)))
 		  ;; after drawing all cells, move down by the equivalent of the row height to the next row
-		  (set-y-position (- y-position (* height-of-row (+ 15 2 2 2))))))
+		  (set-y-position (- y-position (* height-of-row (+ 15 4 4 4))))))
 	      (draw-cell (cell dimensions x-start y-start)
                 (if (listp cell)
                     (progn (draw-subcells cell dimensions x-start y-start)
 			   (set-x-position (+ x-position dimensions)) ;move to next cell
 			   )
                     (progn (pdf:in-text-mode
-                             (pdf:move-text (+ 4 x-start) (+ 2 y-start)) ; add 1 and 2 for spacing
+                             (pdf:move-text (+ 4 x-start) (+ 4 y-start)) ; add 1 and 2 for spacing
                              (pdf:draw-text cell))
                            (set-x-position (+ x-position dimensions)) ;move to the next cell
                            )))	      
@@ -177,12 +179,12 @@
 		"this is a function that takes a list of subcells, draws all of them, at the end, moves to the next cell and at top of the same row (y-start)."
                 (if subcells
                     (progn (pdf:in-text-mode
-                             (pdf:move-text (+ 4 x-start) (+ 2 y-position))
+                             (pdf:move-text (+ 4 x-start) (+ 4 y-position))
                              (pdf:draw-text (car subcells)))
                            (when (cdr subcells)
 			     ;; \<-4-><-text-><-4-><-line->\<-4-><-text-><-4-><-line->\
 			     ;; \<------dimension--------->\<------dimension--------->\
-                             (pdf:move-to x-start y-position) ; move to 2 below the rwo
+                             (pdf:move-to x-start y-position)
                              (pdf:line-to (+ x-start dimensions) y-position) ; draw separator to the end of the cell
                              (pdf:stroke))
 			   (set-y-position (- y-position 15 12))
@@ -197,18 +199,18 @@
                          (pdf:move-to x-position y-start)
                          (pdf:line-to x-position y-end)
                          (pdf:stroke)
-					;  (set-x-position (+ x-position 4)) ; set the remaining 4px to properly space the rules
-                         (draw-column-separators (cdr dimensions) x-position y-start y-end)
+			 (draw-column-separators (cdr dimensions) x-position y-start y-end)
                          )))
               (draw-row-separators (rows x-start x-end y-start)
                 "draw separators between the rows, when a row has more cells than the number of rows in the table, some cells have multiple values,
                                     account for that. don't draw one for the last one"
                 (cond ((equal (length rows) 1))
                       (t (let* ((number-of-cells (row-length (car rows)))
-				;; subtruct 1 from the numer-of-cells because each row is suppossed to be of height 1, if it's not, then add on the height for extra cells
-				;; \<-4-><-text-><-4-><-line->\<-4-><-text-><-4-><-line->\
-				;; \<----------dimension----->\<--------------dimension->\
-
+				|# subtruct 1 from the number-of-cells because each row is suppossed to be of height 1, 
+                                 if it's not, then add on the height for extra cells, the multiplied value will give a 0 if height is 1, 
+                                  so add that before as it is the default, then, if height is more than one, remove 1 because you've already accounted for it
+				 \<-4-><-text-><-4-><-line->\<-4-><-text-><-4-><-line->\
+				 \<----------dimension----->\<--------------dimension->\ #|
                                 (y-end (- y-start 15 12 (* (- number-of-cells 1) (+ 15 4 4 4)))))
         	           (pdf:in-text-mode
                              (pdf:move-to x-start y-end)
