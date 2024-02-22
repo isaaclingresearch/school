@@ -65,7 +65,7 @@
                   (pdf:move-to x-start y-position)
                   (pdf:line-to (- 595 x-start) y-position)
                   (pdf:stroke)
-                  (set-y-position (- y-position 15)) ; move 15+12 below the starting y-position for the headings
+                  (set-y-position (- y-position 15 12)) ; move 15+12 below the starting y-position for the headings
                   (pdf:move-to x-start y-position)
                   (pdf:line-to (- 595 x-start) y-position)
                   (pdf:stroke)
@@ -103,7 +103,7 @@
 
                   ;; data
                   (pdf:set-font helvetica 10.0)
-                  (setq y-position (- y-start 15 12 15)) ; set the y-position at 15 pixels below the headings
+                  (setq y-position (- y-start 15 12 15 12)) ; set the y-position at 15 pixels below the headings
                   (dolist (row-data table-data) ; iterate over all the data provided
                     (draw-row row-data dimensions-data x-start y-position))
 
@@ -159,10 +159,12 @@
                 "row is a list of cells, which maybe lists too, we use row height of 15 + 2 left padding + 2 for the line + 2 for the right padding"
                 (set-y-position y-start)
                 (set-x-position x-start)
-		(let ((height-of-row (row-length row)))
+		(let ((height-of-row (row-length row))
+		      (pos 0))
                   (dolist (cell row)
-                    (let ((cell-dimensions (nth (position cell row :test #'equal) dimensions)))
-                      (draw-cell cell cell-dimensions x-position y-position)))
+                    (let ((cell-dimensions (nth pos dimensions)))
+                      (draw-cell cell cell-dimensions x-position y-position)
+		      (setq pos (+ 1 pos))))
 		  ;; after drawing all cells, move down by the equivalent of the row height to the next row
 		  (set-y-position (- y-position (* height-of-row (+ 15 4 4 4))))))
 	      (draw-cell (cell dimensions x-start y-start)
