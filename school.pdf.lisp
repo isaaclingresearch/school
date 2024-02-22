@@ -32,27 +32,97 @@
          (helvetica (pdf:get-font "Helvetica")))
      (labels ((set-y-position (new-postion) (setf y-position new-postion))
               (set-x-position (new-postion) (setf x-position new-postion))
+	      (draw-table (table-title table-headings table-data)
+                (let* ((dimensions-data (get-widths table-headings table-data))
+                       (number-of-rows (count-rows table-data))
+                       (x-start 0) 
+                       (y-start 0) ; the y-position at which table starts
+                       (x-end 0)
+                       (y-end 0)
+		       ;; \<-4-><-text-><-4-><-line->\ line is also 4
+		       ;; \<----------width / height--------->\
+                       (line-size+padding (+ 4 4 4)) ;two pixel to each side of the line that is 2 pixels
+                       (x-max (apply #'+ dimensions-data))
+                       (total-y-line-size (* number-of-rows line-size+padding))
+                       (y-max (+ (* number-of-rows 15) total-y-line-size))) ; each row is 15px high, so ,multiply and add spacing
+
+		  ;; table title
+                  (pdf:in-text-mode
+                    (pdf:set-font helvetica 20.0)
+                    (set-y-position (- y-position 20)) ; move the y-position 20 below the header line separator
+                    (pdf:draw-centered-text 300 y-position table-title helvetica 20.0)
+                    (set-y-position (- y-position 5)) ; move the y-position 10 below the title, this is the start of the table
+                    (setq y-start y-position)	      ; see line above
+                    )
+		  
+                  ;; center the table, get any remaining space on x, substract the total, divide by 2
+                  (when (> 595 x-max)
+                    (setq x-start (/ (- 595 x-max) 2)))
+                  (setq x-end (+ x-start x-max))
+                  (setq y-end (- y-start y-max 15)) ; from y-start, move to max length and then add 10 for the last row to draw the line
+
+		  ;; upper Table borders
+                  (pdf:move-to x-start y-position)
+                  (pdf:line-to (- 595 x-start) y-position)
+                  (pdf:stroke)
+                  (set-y-position (- y-position 15)) ; move 15 below the starting y-position for the headings, rows are 15 high
+                  (pdf:move-to x-start y-position)
+                  (pdf:line-to (- 595 x-start) y-position)
+                  (pdf:stroke)
+
+		  ;; lower border
+                  (pdf:move-to x-start y-end)
+                  (pdf:line-to x-end y-end)
+                  (pdf:stroke)
+
+		  ;; left border
+                  (pdf:move-to x-start y-start)
+                  (pdf:line-to x-start y-end)
+                  (pdf:stroke)
+
+		  ;; right border
+                  (pdf:move-to x-end y-start)
+                  (pdf:line-to x-end y-end)
+                  (pdf:stroke)
+
+		  ;; headings
+                  (pdf:set-font helvetica 11.0)
+                  (set-x-position x-start) ; start at the beginning of the table
+		  ;; y-position is constant for the headers, they are on the same line
+		  (let ((pos 0))
+                    (dolist (heading table-headings)
+		      (let* ((width (nth pos dimensions-data)))
+			(pdf:in-text-mode
+			  ;; \<-4-><-text-><-4-><-line->\
+			  ;; \<----------width--------->\
+                          (pdf:move-text (+ x-position 4) (+ y-position 4)) ; add to put the headings up a bit
+                          (pdf:draw-text heading)
+                          (set-x-position (+ x-position width))
+			  (setq pos (+ 1 pos))))))
+
+                  ;; data
+                  (pdf:set-font helvetica 10.0)
+                  (setq y-position (- y-position 15)) ; set the y-position at 15 pixels below the headings
+                  (dolist (row-data table-data) ; iterate over all the data provided
+                    (draw-row row-data dimensions-data x-start y-position))
+
+		  ;; draw row-separators
+                  (set-y-position (- y-start 15)) ; account for the headings when drawing row separators
+                  (draw-row-separators table-data x-start x-end y-position)
+
+		  ;; draw vertical rules to separate the cells
+                  (set-x-position x-start) ; start at the beginning of the table
+                  (draw-column-separators dimensions-data x-position y-start y-end)))
               (get-widths (table-headings rows)
-                "this function takes headings and data and returns the one with the largest width in an array of length equal to the headings number"
+                "this function takes headings and data and returns the one with the largest width in an array of length equal to the headings number,
+                 for every cell, add 12 for padding."
                 (let ((widths (make-sequence 'list (length table-headings) :initial-element 0)))
                   (dolist (heading table-headings)
                     (let ((pos (position heading table-headings :test #'equal)))
-                      (setf (nth pos widths) (pdf::text-width heading helvetica 10.0))))
+		      ;; add 12 (the padding) to get the total width of a row
+                      (setf (nth pos widths) (+ 12 (pdf::text-width heading helvetica 10.0)))))
                   (row-widths widths rows 0)))
-              (cell-width (cell width)
-                "get the largest width of one or multiple cell items"
-                (if (listp cell)
-                    (let ((local-width width))
-                      (dolist (cellum cell)
-                        (let ((new-width (cell-width cellum local-width)))
-                          (if (> new-width local-width)
-                              (setq local-width new-width))))
-                      local-width)
-                    (let ((new-width (pdf::text-width cell helvetica 10.0)))
-                      (if (> new-width width)
-                          new-width
-                          width))))
-              (row-widths (widths rows position)
+	      (row-widths (widths rows position)
                 "iterate throught the data setting position position to the largest"
                 (if (equal position (length widths))
                     widths
@@ -64,149 +134,88 @@
                           (when (> cell-width local-width)
                             (setf (nth position local-widths) cell-width))))
                       (row-widths local-widths rows (+ 1 position)))))
+              (cell-width (cell width)
+                "get the largest width of one or multiple cell items; add 12 (the padding and line size) to the text size to get the total"
+                (if (listp cell)
+                    (let ((local-width width))
+                      (dolist (cellum cell)
+                        (let ((new-width (cell-width cellum local-width)))
+                          (if (> new-width local-width)
+                              (setq local-width new-width))))
+                      local-width)
+                    (let ((new-width (+ 12 (pdf::text-width cell helvetica 10.0))))
+                      (if (> new-width width)
+                          new-width
+                          width))))
               (draw-list (list-data accessor-function spacing)
                 (pdf:in-text-mode
                   (dolist (datum list-data)
                     (set-y-position (- y-position (cdr spacing)))
                     (pdf:move-text (car spacing) y-position)
                     (pdf:draw-text (funcall accessor-function datum)))))
-              (draw-subcells (subcells dimensions x-start y-start)
-		(print `("subcells" ,subcells ,dimensions ,x-start ,y-start))
-                (when subcells
-                  (progn (pdf:in-text-mode
-                           (pdf:move-text (+ 1 x-start) (+ 2 y-start))
-                           (pdf:draw-text (car subcells))
-                           (set-y-position (- y-start 2)))
-                         (when (cdr subcells)
-                           (pdf:move-to (- x-start 2) y-position) ; move to 2 below the rwo
-                           (pdf:line-to (+ x-start dimensions 4) y-position) ; draw separator to the end of the cell
-                           (pdf:stroke)
-                           (set-y-position (- y-position 15 2))
-                           )
-                         (draw-subcells (cdr subcells) dimensions x-start y-position))))
-              (draw-cell (cell dimensions x-start y-start)
-                (if (listp cell)
-                    (draw-subcells cell dimensions x-start y-start)
-                    (progn (pdf:in-text-mode
-                             (pdf:move-text (+ 1 x-start) (+ 2 y-start)) ; add 1 and 2 for spacing
-                             (pdf:draw-text cell))
-                           (set-x-position (+ x-position dimensions 4)) ;move to the next cell
-                           ))
-                )
-              (draw-row (row dimensions x-start y-start)
-                "row is a list of cells, which maybe lists too, we use row height of 15 + 1 left padding + 2 for the line + 1 for the right padding"
+	      (draw-row (row dimensions x-start y-start)
+                "row is a list of cells, which maybe lists too, we use row height of 15 + 2 left padding + 2 for the line + 2 for the right padding"
                 (set-y-position y-start)
                 (set-x-position x-start)
-                (dolist (cell row)
-                  (let ((cell-dimensions (nth (position cell row :test #'equal) dimensions)))
-                    (draw-cell cell cell-dimensions x-position y-position))))
+		(let ((height-of-row (row-length row)))
+                  (dolist (cell row)
+                    (let ((cell-dimensions (nth (position cell row :test #'equal) dimensions)))
+                      (draw-cell cell cell-dimensions x-position y-position)))
+		  ;; after drawing all cells, move down by the equivalent of the row height to the next row
+		  (set-y-position (- y-position (* height-of-row (+ 15 2 2 2))))))
+	      (draw-cell (cell dimensions x-start y-start)
+                (if (listp cell)
+                    (progn (draw-subcells cell dimensions x-start y-start)
+			   (set-x-position (+ x-position dimensions)) ;move to next cell
+			   )
+                    (progn (pdf:in-text-mode
+                             (pdf:move-text (+ 4 x-start) (+ 2 y-start)) ; add 1 and 2 for spacing
+                             (pdf:draw-text cell))
+                           (set-x-position (+ x-position dimensions)) ;move to the next cell
+                           )))	      
+              (draw-subcells (subcells dimensions x-start y-start)
+		"this is a function that takes a list of subcells, draws all of them, at the end, moves to the next cell and at top of the same row (y-start)."
+                (if subcells
+                    (progn (pdf:in-text-mode
+                             (pdf:move-text (+ 4 x-start) (+ 2 y-position))
+                             (pdf:draw-text (car subcells)))
+                           (when (cdr subcells)
+			     ;; \<-4-><-text-><-4-><-line->\<-4-><-text-><-4-><-line->\
+			     ;; \<------dimension--------->\<------dimension--------->\
+                             (pdf:move-to x-start y-position) ; move to 2 below the rwo
+                             (pdf:line-to (+ x-start dimensions) y-position) ; draw separator to the end of the cell
+                             (pdf:stroke))
+			   (set-y-position (- y-position 15 12))
+                           (draw-subcells (cdr subcells) dimensions x-start y-start))
+		    (set-y-position y-start)))
               (draw-column-separators (dimensions x-start y-start y-end)
                 "draw the vertical lines that separate columns separate the lines from the text by 2"
+		;; \<-4-><-text-><-4-><-line->\<-4-><-text-><-4-><-line->\
+		;; \<--------dimension------->\<--------dimension------->\
                 (cond ((equal (length dimensions) 1))
-                      (t (set-x-position (+ x-start (car dimensions) 2)) ; set the position at 2 right of the text in the current cell
+                      (t (set-x-position (+ x-start (car dimensions))) ; set the position at 4 right of the text in the current cell
                          (pdf:move-to x-position y-start)
                          (pdf:line-to x-position y-end)
                          (pdf:stroke)
-                         (set-x-position (+ x-position 2)) ; set the remaining 2px to properly space the rules
+					;  (set-x-position (+ x-position 4)) ; set the remaining 4px to properly space the rules
                          (draw-column-separators (cdr dimensions) x-position y-start y-end)
                          )))
-              (draw-row-separators (num rows x-start x-end y-start)
+              (draw-row-separators (rows x-start x-end y-start)
                 "draw separators between the rows, when a row has more cells than the number of rows in the table, some cells have multiple values,
                                     account for that. don't draw one for the last one"
-                (print `("rows-separator" ,num ,rows ,y-start ,x-start ,x-end))
                 (cond ((equal (length rows) 1))
                       (t (let* ((number-of-cells (row-length (car rows)))
 				;; subtruct 1 from the numer-of-cells because each row is suppossed to be of height 1, if it's not, then add on the height for extra cells
-                                (y-end (- y-start 15 4 (* (- number-of-cells 1) (+ 15 1 1 2)))))
-                           (print y-end)
-			   (print number-of-cells)
-                           (pdf:in-text-mode
+				;; \<-4-><-text-><-4-><-line->\<-4-><-text-><-4-><-line->\
+				;; \<----------dimension----->\<--------------dimension->\
+
+                                (y-end (- y-start 15 12 (* (- number-of-cells 1) (+ 15 4 4 4)))))
+        	           (pdf:in-text-mode
                              (pdf:move-to x-start y-end)
                              (pdf:line-to x-end y-end)
                              (pdf:stroke))
-                           (draw-row-separators num (cdr rows) x-start x-end y-end))
-                         ))) 
-              (draw-table (table-title table-headings table-data)
-                (let* ((dimensions-data (get-widths table-headings table-data))
-                       (number-of-rows (count-rows table-data))
-                       (x-start 0) 
-                       (y-start 0) ; the y-position at which table starts
-                       (x-end 0)
-                       (y-end 0)
-                       (line-size+padding (+ 1 2 1)) ;one pixel to each side of the line that is 2 pixels
-                       (total-x-line-size (* (length table-headings) line-size+padding))
-                       (x-max (+ total-x-line-size (apply #'+ dimensions-data)))
-                       (total-y-line-size (* number-of-rows line-size+padding))
-                       (y-max (+ (* number-of-rows 15) total-y-line-size))) ; each row is 15px high, so ,multiply and add spacing
-                  (print `(,x-start ,y-start ,x-end ,y-end ,line-size+padding ,total-x-line-size ,x-max ,total-y-line-size ,y-max ,number-of-rows))
-                  (dolist (heading table-headings)
-                    ;; collect local x-max to set the width of the cells
-                    (let ((local-x-max 0)
-                          (heading-index (position heading table-headings :test #'equal))
-                          (heading-width (pdf::text-width heading helvetica 11.0)))
-                      (if (> heading-width local-x-max)
-                          (setq local-x-max heading-width))))
-                  (pdf:in-text-mode
-                    (pdf:set-font helvetica 20.0)
-                    (set-y-position (- y-position 20)) ; move the y-position 20 below the header line separator
-                    (pdf:draw-centered-text 300 y-position table-title helvetica 20.0)
-                    (set-y-position (- y-position 5)) ; move the y-position 10 below the title, this is the start of the table
-                    (setq y-start y-position)	      ; see line above
-                    )
-                  ;; center the table, get any remaining space on x, substract the total, divide by 2
-                  (when (> 595 x-max)
-                    (setq x-start (/ (- 595 x-max) 2)))
-                  (setq x-end (+ x-start x-max))
-                  (setq y-end (- y-start y-max 15)) ; from y-start, move to max length and then add 10 for the last row to draw the line
-                  (print `("yes" ,y-start ,y-max ,y-end))
-                  ;; upper Table borders
-                  (pdf:move-to x-start y-position)
-                  (pdf:line-to (- 595 x-start) y-position)
-                  (pdf:stroke)
-                  (set-y-position (- y-position 15)) ; move 15 below the starting y-position for the headings, rows are 15 high
-                  (pdf:move-to x-start y-position)
-                  (pdf:line-to (- 595 x-start) y-position)
-                  (pdf:stroke)
-                  ;; lower border
-                  (pdf:move-to x-start y-end)
-                  (pdf:line-to x-end y-end)
-                  (pdf:stroke)
-                  ;; left border
-                  (pdf:move-to x-start y-start)
-                  (pdf:line-to x-start y-end)
-                  (pdf:stroke)
-                  ;; right border
-                  (pdf:move-to x-end y-start)
-                  (pdf:line-to x-end y-end)
-                  (pdf:stroke)
-                  ;; headings
-                  (pdf:set-font helvetica 11.0)
-                  (set-x-position (+ 1 x-start)) ; start at the beginning of the table, move away from the line by 1
-                  ;; y-position is constant for the headers, they are on the same line
-                  (dolist (heading table-headings)
-                    (let* ((heading-index (position heading table-headings :test #'equal))
-                           (width (nth heading-index dimensions-data)))
-                      (pdf:in-text-mode
-                        ;; this is wrong code
-                        (pdf:move-text x-position (+ y-position 3)) ; add to put the headings up a bit
-                        (pdf:draw-text heading)
-                        (set-x-position (+ x-position width 4)) ; increase the x-position by the current width text to go to next cell 4 is 1 for left padding, 2 for line and 1 for tight padding
-                        )))
-                  ;; data
-                  (pdf:set-font helvetica 10.0)
-                  (setq y-position (- y-position 15)) ; set the y-position at 15 pixels below the headings
-                  (dolist (row-data table-data) ; iterate over all the data provided
-                    (draw-row row-data dimensions-data x-start y-position)
-                    ;; move to the next line
-                    (set-y-position (- y-position 15 2)) ; since we are moving down, the height of each cell is 15, move down by 15 to the next row and by 2 as you've alrady moved by 2 for the line to make 4 for line and padding
-                    )
-                  (set-y-position (- y-start 15)) ; account for the headings when drawing row separators
-                  (draw-row-separators (length table-headings) table-data x-start x-end y-position)
-                  ;; draw vertical rules to separate the cells
-                  (set-x-position x-start) ; start at the beginning of the tab
-                  (draw-column-separators dimensions-data x-position y-start y-end) 
-                  )
-                ) )
+                           (draw-row-separators (cdr rows) x-start x-end y-end))
+                         ))))
        (pdf:with-document ()
          (pdf:with-page ()
            (pdf:with-outline-level ("Example" (pdf:register-page-reference))
@@ -248,11 +257,11 @@
 
 (defun export-table-to-pdf (title pdf-path headings data)
   "this is a function to export the data to a pdf, it is provided with a title of the data, pdf-path is the path to save the pdf  and the data-function to call to get the data.
-   the result-function to get the data to draw on the pdf" 
+   the result-function to get the data to draw on the pdf
+   example
+  (export-table-to-pdf title path '(a b) '((a b) (a (a b)))) 
+  if a row has a cell with multiple values, just present them as a list." 
   (page-template pdf-path
-    (print (cell-width '("absd" "asbnmd") 0))
-    (print (row-widths '(0 0 0) data 0))
-    (print (get-widths headings data))
     (draw-table title headings data)
     ))
 
