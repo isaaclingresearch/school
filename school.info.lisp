@@ -2,7 +2,7 @@
 ;;; general school information means the basic structure of the school.
 
 (defpackage :school.info
-  (:use :cl :sqlite :ltk :cl-pdf :str)
+  (:use :cl :sqlite :ltk :cl-pdf :str :data-table)
   (:shadow cl-pdf:image cl-pdf:make-image cl-pdf:font-metrics cl-pdf:bbox cl-pdf:name cl-pdf:scale str:repeat)
   (:export :start :create-tables))
 
@@ -79,9 +79,7 @@
 	  (execute-non-query db "update school_details set detail = ? where detail_name = ?" (cdr detail) (car detail))))))
 
 (defun get-school-details ()
-  (mapcar (lambda (detail)
-	    (cons (car detail) (cadr detail)))
-	  (conn (execute-to-list db "select detail_name, detail from school_details"))))
+  (conn (execute-to-list db "select detail_name, detail from school_details")))
 
 ;; CLASS FUNCTIONS
 (defun get-classes (&optional level-id)
@@ -223,7 +221,7 @@
 			     :command (lambda ()
 					(let ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf")))))
 					  (unless (equal "" pdf-path)
-					    (export-to-pdf "Levels" pdf-path #'|get-level| #'cadr)
+					    (export-table-to-pdf "Levels" pdf-path '("Levels") (mapcar (lambda (level) (last level)) (|get-level|)))
 					    (create-menubar)
 					    (grid-columnconfigure *tk* 0 :weight 1) 
 					    (grid-rowconfigure *tk* 0 :weight 1)
@@ -266,9 +264,12 @@
 		 	     :command (lambda ()
 					(let* ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf"))))
 					       (levels (|get-level|))
+					       (classes (get-classes))
 					       (class-data (mapcar (lambda (level)
-								     "map the to its classes to a tuple (level (class-1 ...))"
-								     (list (cadr level) (mapcar #'cadr (get-classes (car level)))))
+								     `(,(cadr level) ,(mapcar (lambda (class)
+												(cadr class))
+											      (remove-if-not
+											       (lambda (e) (equal (car (last e)) (car level))) classes))))
 								   levels)))
 					  (unless (equal "" pdf-path)
 					    (export-table-to-pdf "Classes" pdf-path '("Level" "Classes") class-data)
@@ -319,13 +320,9 @@
   (make-instance 'menubutton :master stream-menu :text "Export to PDF"
 		 	     :command (lambda ()
 					(let* ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf"))))
-					       (levels (|get-level|))
-					       (class-data (mapcar (lambda (level)
-								     "map the to its classes to a tuple (level (class-1 ...))"
-								     (list (cadr level) (mapcar #'cadr (get-classes (car level)))))
-								   levels)))
+					       (stream-data (get-stream-data)))
 					  (unless (equal "" pdf-path)
-					    (export-table-to-pdf "Streams" pdf-path '("Level" "Classes" "Streams") class-data)
+					    (export-table-to-pdf "Streams" pdf-path '("Level" "Class" "Stream") stream-data)
 					    (create-menubar)
 					    (grid-columnconfigure *tk* 0 :weight 1) 
 					    (grid-rowconfigure *tk* 0 :weight 1)
@@ -333,9 +330,22 @@
 					      (destroy *school-info-main-frame*))
 					    (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
 					    (grid *school-info-main-frame* 0 0)
-					    (grid (make-instance 'label :master *school-info-main-frame* :text "The classes have been exported to pdf") 1 0))
+					    (grid (make-instance 'label :master *school-info-main-frame* :text "The streams have been exported to pdf") 1 0))
 					  )
 					)))
+
+(defun get-stream-data ()
+  "mapcar streams to classes to levels"
+  (let ((levels (|get-level|))
+	(classes (get-classes)))
+    (labels ((get-level-streams (level-id)
+	       (mapcar (lambda (class) (mapcar #'cadr (get-streams (car class))))
+		       (get-classes level-id))))
+      (mapcar (lambda (level) (list (cadr level)
+				    (mapcar #'cadr (get-classes (car level)))
+				    (get-level-streams (car level)))) levels)) 
+    ))
+
 
 (defun subject-menu (subject-menu)
   (let ((new-menu (make-instance 'menu :master subject-menu :text "New"))
@@ -498,7 +508,20 @@
 (defun details-menu (menu)
   (make-instance 'menubutton :master menu :text "Edit details" :command (lambda () (details-form)))
   (make-instance 'menubutton :master menu :text "Show details" :command (lambda () (show-details)))
-  (make-instance 'menubutton :master menu :text "Export to PDF"))
+  (make-instance 'menubutton :master menu :text "Export to PDF"
+			     :command (lambda ()
+					(let ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf")))))
+					  (unless (equal "" pdf-path)
+					    (export-table-to-pdf "School details" pdf-path '("Detail" "Value") (get-school-details))
+					    (create-menubar)
+					    (grid-columnconfigure *tk* 0 :weight 1) 
+					    (grid-rowconfigure *tk* 0 :weight 1)
+					    (when *school-info-main-frame*
+					      (destroy *school-info-main-frame*))
+					    (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+					    (grid *school-info-main-frame* 0 0)
+					    (grid (make-instance 'label :master *school-info-main-frame* :text "The school details have been exported to pdf.") 1 0))
+					  ))))
 
 (defun create-menubar ()
   "create a new menu bar, if an old one exists, destroy it, then recreate a new one."
@@ -547,7 +570,7 @@
   (unless (null *school-info-main-frame*)
     (ltk:destroy *school-info-main-frame*))
   (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (flet ((get-detail (data key) (cdr (assoc key data :test #'string-equal))))
+  (flet ((get-detail (data key) (cadr (assoc key data :test #'string-equal))))
     (let* ((data (get-school-details))
 	   (heading (make-instance 'label :master *school-info-main-frame* :text "Basic Information about the school."))
 	   (name-label (make-instance 'label :master *school-info-main-frame* :text "Name"))
@@ -603,7 +626,7 @@
   (unless (null *school-info-main-frame*)
     (ltk:destroy *school-info-main-frame*))
   (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (flet ((get-detail (data key) (cdr (assoc key data :test #'string-equal))))
+  (flet ((get-detail (data key) (cadr (assoc key data :test #'string-equal))))
     (let* ((data (get-school-details))
 	   (heading (make-instance 'label :master *school-info-main-frame* :text "Basic Information about the school."))
 	   (name-label (make-instance 'label :master *school-info-main-frame* :text "Name"))
@@ -619,9 +642,7 @@
 	   (fax-label (make-instance 'label :master *school-info-main-frame* :text "Fax"))
 	   (fax-data (make-instance 'label :master *school-info-main-frame* :text (get-detail data "fax")))
 	   (email-label (make-instance 'label :master *school-info-main-frame* :text "Email"))
-	   (email-data (make-instance 'label :master *school-info-main-frame* :text (get-detail data "email")))
-	   (print-button (make-instance 'button :master *school-info-main-frame*
-						:text "Print School Details")))
+	   (email-data (make-instance 'label :master *school-info-main-frame* :text (get-detail data "email"))))
       (prepare-main-window)
       (grid heading 0 0 :padx 10 :pady 5)
       (grid name-label 1 0 :padx 10 :pady 5)
@@ -637,8 +658,7 @@
       (grid fax-label 6 0 :padx 10 :pady 5)
       (grid fax-data 6 2 :padx 10 :pady 5)
       (grid email-label 7 0 :padx 10 :pady 5)
-      (grid email-data 7 2 :padx 10 :pady 5)
-      (grid print-button 8 2 :pady 10))))
+      (grid email-data 7 2 :padx 10 :pady 5))))
 
 
 (defun level-form (&optional level)
