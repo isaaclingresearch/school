@@ -9,7 +9,7 @@
 (defsystem "school"
   :author "Ninx technology limited"
   :description "The application manager for the school application"
-  :depends-on (:ltk :sqlite :cl-pdf :cl-pdf-parser :str :data-table)
+  :depends-on (:ltk :sqlite :cl-pdf :cl-pdf-parser :str)
   :components ((:file "school.info")
 	       (:file "school")
 	       (:file "school.pdf"))
