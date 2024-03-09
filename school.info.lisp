@@ -219,9 +219,13 @@
   (make-instance 'menubutton :master level-menu :text "Show levels" :command (lambda () (show-levels)))
   (make-instance 'menubutton :master level-menu :text "Export to PDF"
 			     :command (lambda ()
-					(let ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf")))))
+					(let ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf"))))
+					      (level-data (mapcar (lambda (level) (last level)) (|get-level|))))
 					  (unless (equal "" pdf-path)
-					    (export-table-to-pdf "Levels" pdf-path '("Levels") (mapcar (lambda (level) (last level)) (|get-level|)))
+					    (generate-pdf (:file-path pdf-path
+							   :table-title "Levels"
+							   :table-headings '("Levels")
+							   :table-data level-data))
 					    (create-menubar)
 					    (grid-columnconfigure *tk* 0 :weight 1) 
 					    (grid-rowconfigure *tk* 0 :weight 1)
@@ -272,7 +276,7 @@
 											       (lambda (e) (equal (car (last e)) (car level))) classes))))
 								   levels)))
 					  (unless (equal "" pdf-path)
-					    (export-table-to-pdf "Classes" pdf-path '("Level" "Classes") class-data)
+					    (generate-pdf (:table-headings '("Level" "Classes") :table-data class-data :file-path pdf-path :table-title "Classes"))
 					    (create-menubar)
 					    (grid-columnconfigure *tk* 0 :weight 1) 
 					    (grid-rowconfigure *tk* 0 :weight 1)
@@ -283,6 +287,16 @@
 					    (grid (make-instance 'label :master *school-info-main-frame* :text "The classes have been exported to pdf") 1 0))
 					  )
 					)))
+
+(defun get-stream-data ()
+  "mapcar streams to classes to levels"
+  (let ((levels (|get-level|)))
+    (labels ((get-level-streams (level-id)
+	       (mapcar (lambda (class) (mapcar #'cadr (get-streams (car class))))
+		       (get-classes level-id))))
+      (mapcar (lambda (level) (list (cadr level)
+				    (replace-nil (mapcar #'cadr (get-classes (car level))) "")
+				    (replace-nil (get-level-streams (car level)) ""))) levels))))
 
 (defun stream-menu (stream-menu)  
   (let ((new-menu (make-instance 'menu :master stream-menu :text "New"))
@@ -319,10 +333,12 @@
   (make-instance 'menubutton :master stream-menu :text "Show streams" :command (lambda () (show-streams)))
   (make-instance 'menubutton :master stream-menu :text "Export to PDF"
 		 	     :command (lambda ()
-					(let* ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf"))))
-					       (stream-data (get-stream-data)))
+					(let* ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf")))))
 					  (unless (equal "" pdf-path)
-					    (export-table-to-pdf "Streams" pdf-path '("Level" "Class" "Stream") stream-data)
+					    (generate-pdf (:file-path pdf-path
+							   :table-title "Streams"
+							   :table-headings '("Level" "Class" "Stream")
+							   :table-data (get-stream-data)))
 					    (create-menubar)
 					    (grid-columnconfigure *tk* 0 :weight 1) 
 					    (grid-rowconfigure *tk* 0 :weight 1)
@@ -331,21 +347,20 @@
 					    (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
 					    (grid *school-info-main-frame* 0 0)
 					    (grid (make-instance 'label :master *school-info-main-frame* :text "The streams have been exported to pdf") 1 0))
-					  )
-					)))
+					  ))))
 
-(defun get-stream-data ()
-  "mapcar streams to classes to levels"
-  (let ((levels (|get-level|))
-	(classes (get-classes)))
-    (labels ((get-level-streams (level-id)
-	       (mapcar (lambda (class) (mapcar #'cadr (get-streams (car class))))
-		       (get-classes level-id))))
-      (mapcar (lambda (level) (list (cadr level)
-				    (mapcar #'cadr (get-classes (car level)))
-				    (get-level-streams (car level)))) levels)) 
-    ))
-
+(defun get-subject-data ()
+  "get subject data as (class streams stream-subjects)"
+  (let ((classes (get-classes)))
+    (mapcar (lambda (class)
+	      (let ((streams (get-streams (car class))))
+		(list (cadr class)
+		      (replace-nil (mapcar #'cadr streams) "")
+		      (replace-nil (mapcar (lambda (stream-subjects)
+					     (mapcar #'cadr stream-subjects))
+					   (mapcar (lambda (stream) (get-stream-subjects (car stream)))
+						   streams)) ""))))
+	    classes)))
 
 (defun subject-menu (subject-menu)
   (let ((new-menu (make-instance 'menu :master subject-menu :text "New"))
@@ -387,7 +402,42 @@
 													  (grid *school-info-main-frame* 0 0)
 													  (grid (make-instance 'label :master *school-info-main-frame* :text message) 1 0))))))))))))
   (make-instance 'menubutton :master subject-menu :text "Show Subjects" :command (lambda () (show-subjects)))
-  (make-instance 'menubutton :master subject-menu :text "Export to PDF"))
+  (make-instance 'menubutton :master subject-menu :text "Export to PDF"
+		 	     :command (lambda ()
+					(let* ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf")))))
+					  (unless (equal "" pdf-path)
+					    (generate-pdf (:file-path pdf-path
+							   :table-title "Subjects by Stream"
+							   :table-headings '("Class" "Stream" "Subject")
+							   :table-data (get-subject-data)))
+					    (create-menubar)
+					    (grid-columnconfigure *tk* 0 :weight 1) 
+					    (grid-rowconfigure *tk* 0 :weight 1)
+					    (when *school-info-main-frame*
+					      (destroy *school-info-main-frame*))
+					    (setq *school-info-main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+					    (grid *school-info-main-frame* 0 0)
+					    (grid (make-instance 'label :master *school-info-main-frame* :text "The streams have been exported to pdf") 1 0))
+					  ))))
+(defun get-paper-data ()
+  "get subject data as (class-stream stream-subjects pape)"
+  (labels ((subject-papers (subject-id) (mapcar #'cadr (get-papers subject-id)))
+	   (stream-subjects (stream-id) (mapcar #'cadr (get-subjects stream-id)))
+	   (streams (class-id) (mapcar #'cadr (get-streams class-id))))
+    (let ((classes (get-classes)))
+      (mapcar (lambda (class)
+		(let* ((class-id (car class))
+		      (streams (streams class-id))
+		      (stream-ids (mapcar #'car (get-streams class-id))))
+		  (list (cadr class)
+			(replace-nil streams "")
+			(replace-nil (mapcar #'stream-subjects stream-ids) "")
+			(mapcar (lambda (stream-id)
+				  (replace-nil (mapcar #'cadr
+						       (mapcar (lambda (subject-id)
+								 (get-papers subject-id)) (mapcar #'car (get-subjects stream-id)))) ""))
+				stream-ids))))
+	      classes))))
 
 (defun paper-menu (paper-menu)
   (let ((new-menu (make-instance 'menu :master paper-menu :text "New"))

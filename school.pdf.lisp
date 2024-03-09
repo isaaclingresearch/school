@@ -1,15 +1,19 @@
-
-;;; cl-pdf copyright 2002-2005 Marc Battyani see license.txt for details of the BSD style license
-;;; You can reach me at marc.battyani@fractalconcept.com or marc@battyani.net
-;;; The homepage of cl-pdf is here: http://www.fractalconcept.com/asp/html/cl-pdf.html
-
+;;; handles creation of pdfs, tables and all that.
+;;; ensure that you understand the code before you alter it, save a version before altering.
+;;; uses the cl-pdf package
 
 (in-package :school.info)
 
-(defun replace-nil (list)
-  (mapcar (lambda (e) (if (null e) 0 e)) list))
+(defun replace-nil (list &optional (with 0))
+  "replace all nil with 0"
+  (if list
+      (mapcar (lambda (e) (if (null e) with e)) list)
+      with))
+
+;;; height in all these functions means the height of a cell in a table along y-axis. can be a cell, row or a list of rows
 
 (defun row-cell-heights (row)
+  "get heights of cells of a row"
   (mapcar #'cell-heights row))
 
 (defun reduce-cell-heights (heights)
@@ -28,6 +32,7 @@
   (reduce-cell-heights (collect-heights (row-cell-heights row))))
 
 (defun cell-heights (cell)
+  "get the height of a single cell"
   (if (listp cell)
       (mapcar (lambda (subcell) (if (listp subcell) (length subcell) 1)) cell)
       1))
@@ -69,9 +74,11 @@
 	 (c-zip (cdr list1) (cdr list2) (append acc (list (append (car list1) (list (car list2)))))))))
 
 (defun row-height (row)
+  "get the height of a row"
   (reduce #'max (merge-heights (collect-heights (row-cell-heights row)))))
 
 (defun row-heights (rows)
+  "get the heights of a list of rows"
   (reduce #'+ (mapcar #'row-height rows)))
 
 (defun subcell-height (subcell)
@@ -81,7 +88,7 @@
       1))
 
 ;; TODO add data to more than pages.
-(defmacro page-template (&key (file-path #P"~/common-lisp/school/mine.pdf")  (type :table) table-data table-title table-headings (table-cell-size 15) (table-padding 12))
+(defmacro generate-pdf ((&key pre-table (show-page-numbers t) (file-path #P"~/common-lisp/school/mine.pdf")  (type :table) table-data table-title table-headings (table-cell-size 15) (table-padding 6)) &body body)
   "Every page must have the branding of the school, with logo, name, location and contacts,
    then content in the center, the template puts the branding onto the page,
    the file is passed as a file arg, and then the data to be put onto the page is passed as the body
@@ -98,7 +105,6 @@
 	  (cell-padding ,table-padding)
 	  (cell-size+padding (+ ,table-cell-size ,table-padding))
 	  (1/3-of-padding (/ cell-padding 3))
-	  (2/3-of-padding (/ cell-padding (/ 2 3)))
 	  (helvetica (pdf:get-font "Helvetica")))
      (labels ((set-y-position (new-postion) (setf y-position new-postion))
 	      (set-x-position (new-postion) (setf x-position new-postion))
@@ -108,7 +114,6 @@
 		       (y-start 0) ; the y-position at which table starts
 		       (x-end 0)
 		       (y-end 0)
-		       (dimensions-data (get-widths ,table-headings ,table-data))
 		       (x-max (apply #'+ dimensions-data))
 		       (y-max (* (1+ number-of-rows) cell-size+padding)) ; add one row for the table titles
 		       )
@@ -221,12 +226,12 @@
 		      (if (> new-width width)
 			  new-width
 			  width))))
-	      (draw-list (list-data accessor-function spacing)
-		(pdf:in-text-mode
-		  (dolist (datum list-data)
-		    (set-y-position (- y-position (cdr spacing)))
-		    (pdf:move-text (car spacing) y-position)
-		    (pdf:draw-text (funcall accessor-function datum)))))
+	      ;; (draw-list (list-data accessor-function spacing)
+	      ;; 	(pdf:in-text-mode
+	      ;; 	  (dolist (datum list-data)
+	      ;; 	    (set-y-position (- y-position (cdr spacing)))
+	      ;; 	    (pdf:move-text (car spacing) y-position)
+	      ;; 	    (pdf:draw-text (funcall accessor-function datum)))))
 	      (rows-on-front-page ()
 		"compute and return how many rows can be put on the front page, this will depend on the cell-size+padding
 		we start at 740, move down by 5, then again by cell-size+padding and leave cell-size+padding*2 at the end of the rows, for page numbers and stuff."
@@ -237,12 +242,14 @@
 		(floor (/ (- 841 (* cell-size+padding 4)) cell-size+padding)))
 	      (front-page-rows (rows number-of-rows &optional acc (height-acc 0))
 		"given a list of rows and the number of rows a frontpage can hold, return a cons (front-page-rows.other-rows)"
-		(let* ((row (car rows))
-		       (height (row-height row))
-		       (new-height-acc (+ height height-acc)))
-		  (cond ((= new-height-acc number-of-rows) (cons (append acc (list row)) (cdr rows)))
-			((> new-height-acc number-of-rows) (cons acc rows))
-			(t (front-page-rows (cdr rows) number-of-rows (append acc (list row)) new-height-acc)))))
+		(if rows
+		    (let* ((row (car rows))
+			   (height (row-height row))
+			   (new-height-acc (+ height height-acc)))
+		      (cond ((= new-height-acc number-of-rows) (cons (append acc (list row)) (cdr rows)))
+			    ((> new-height-acc number-of-rows) (cons acc rows))
+			    (t (front-page-rows (cdr rows) number-of-rows (append acc (list row)) new-height-acc))))
+		    (cons acc rows)))
 	      (other-page-rows (rows rows-per-page &optional acc lacc (height-acc 0))
 		"returns a list of rows to be put on each page (page-1 page-2 ... page-n)"
 		(if rows
@@ -283,7 +290,7 @@
 		(if subcells
 		    (if (listp (car subcells))
 			(progn (let ((pos 1) ; start at one because we're comapring against length
-				     (len (length (car subcells))))
+				     )
 				 (loop for cell in (car subcells)
 				       do (pdf:in-text-mode
 					    ;; see above
@@ -322,8 +329,7 @@
 		"draw separators between the rows except the last one account for the row size (15) and the spacing (12)"
 		;; set the y-position to be at y-start
 		(set-y-position y-start)
-		(let ((pos 1)
-		      (len (length rows)))
+		(let ((pos 1))
 		  (dolist (row rows)
 		    (let* ((row-len (row-height row))
 			   (height (* row-len cell-size+padding)))
@@ -333,53 +339,57 @@
 			(pdf:line-to x-end y-position)
 			(pdf:stroke))
 		      (incf pos))))))
-       (pdf:with-document ()
-	 (if (equal ,type :table)
-	     ;; iterate over all the data provided
-	     (let* ((frontpage-and-other-rows (front-page-rows ,table-data (rows-on-front-page)))
-		    (frontpage-rows (car frontpage-and-other-rows))
-		    (other-rows (cdr frontpage-and-other-rows))
-		    (other-page-rows (other-page-rows other-rows (rows-per-page))))
-	       ;; put data on frontpage
-	       (pdf:with-page ()
-		 (pdf:with-outline-level ("Example" (pdf:register-page-reference))
-		   (let* ((logo (make-jpeg-image "~/common-lisp/school/static/kawanda.jpeg"))
-			  (school-details (get-school-details))
-			  (school-name (cadr (assoc "name" school-details :test #'string-equal)))
-			  (pobox (cadr (assoc "pobox" school-details :test #'string-equal)))
-			  (email (cadr (assoc "email" school-details :test #'string-equal)))
-			  (phone-number (cadr (assoc "phone_number" school-details :test #'string-equal)))
-			  (location (cadr (assoc "location" school-details :test #'string-equal)))
-			  )
-		     (pdf:add-images-to-page logo)
-		     (pdf:draw-image logo 10 750 70 200 0 t)
-		     (pdf:in-text-mode
-		       (pdf:move-text 100 800)
-		       (pdf:draw-centered-text 300 800 school-name helvetica 18.0)
-		       (pdf:draw-centered-text 300 785 location helvetica 15.0)
-		       (pdf:draw-centered-text 300 775 (format nil "P.O.Box ~a. Email: ~a. Telephone: ~a" pobox email phone-number) helvetica 10.0)
-		       (pdf:set-font helvetica 20.0)
-		       (pdf:move-text 595 740)
-		       (pdf:polyline '((0 740) (595 740))) ; these are the default a4 sizes #(0 0 595 841)
-		       (pdf:stroke)
-		       (set-y-position 740))
-		     (draw-table frontpage-rows dimensions-data)
-		     (pdf:in-text-mode
-		       (pdf:draw-centered-text 290 cell-size+padding "1" helvetica 10.0))
-		     )))
-	       ;; add all other data that is not on the first page
-	       (let ((page-count 2))
-		 (dolist (rows other-page-rows)
-		   (set-y-position (- 841 (* 2 cell-size+padding)))
-		   (pdf:with-page ()
-		     (pdf:with-outline-level ("Example" (pdf:register-page-reference))
-		       (draw-table rows dimensions-data :other-page t))
-		     (pdf:in-text-mode
-		       (pdf:draw-centered-text 290 cell-size+padding (format nil "~d" page-count) helvetica 10.0))
-		     (incf page-count)
-		     )))
-	       ))
-	 (pdf:write-document ,file-path)))))
+       (let ((dimensions-data (get-widths ,table-headings ,table-data)))
+	 (pdf:with-document ()
+	   (if (equal ,type :table)
+	       ;; iterate over all the data provided
+	       (let* ((frontpage-and-other-rows (front-page-rows ,table-data (rows-on-front-page)))
+		      (frontpage-rows (car frontpage-and-other-rows))
+		      (other-rows (cdr frontpage-and-other-rows))
+		      (other-page-rows (other-page-rows other-rows (rows-per-page))))
+		 ;; put data on frontpage
+		 (pdf:with-page ()
+		   (pdf:with-outline-level ("Example" (pdf:register-page-reference))
+		     (let* ((logo (make-jpeg-image "~/common-lisp/school/static/kawanda.jpeg"))
+			    (school-details (get-school-details))
+			    (school-name (cadr (assoc "name" school-details :test #'string-equal)))
+			    (pobox (cadr (assoc "pobox" school-details :test #'string-equal)))
+			    (email (cadr (assoc "email" school-details :test #'string-equal)))
+			    (phone-number (cadr (assoc "phone_number" school-details :test #'string-equal)))
+			    (location (cadr (assoc "location" school-details :test #'string-equal)))
+			    )
+		       (pdf:add-images-to-page logo)
+		       (pdf:draw-image logo 10 750 70 200 0 t)
+		       (pdf:in-text-mode
+			 (pdf:move-text 100 800)
+			 (pdf:draw-centered-text 300 800 school-name helvetica 18.0)
+			 (pdf:draw-centered-text 300 785 location helvetica 15.0)
+			 (pdf:draw-centered-text 300 775 (format nil "P.O.Box ~a. Email: ~a. Telephone: ~a" pobox email phone-number) helvetica 10.0)
+			 (pdf:set-font helvetica 20.0)
+			 (pdf:move-text 595 740)
+			 (pdf:polyline '((0 740) (595 740))) ; these are the default a4 sizes #(0 0 595 841)
+			 (pdf:stroke)
+			 (set-y-position 740))
+		       ,@pre-table
+		       (draw-table frontpage-rows dimensions-data)
+		       (when ,show-page-numbers
+			 (pdf:in-text-mode
+			   (pdf:draw-centered-text 290 cell-size+padding "1" helvetica 10.0)))
+		       )))
+		 ;; add all other data that is not on the first page
+		 (let ((page-count 2))
+		   (dolist (rows other-page-rows)
+		     (set-y-position (- 841 (* 2 cell-size+padding)))
+		     (pdf:with-page ()
+		       (pdf:with-outline-level ("Example" (pdf:register-page-reference))
+			 (draw-table rows dimensions-data :other-page t))
+		       (when ,show-page-numbers
+			 (pdf:in-text-mode
+			   (pdf:draw-centered-text 290 cell-size+padding (format nil "~d" page-count) helvetica 10.0)))
+		       (incf page-count)
+		       ))))
+	       ,@body)
+	   (pdf:write-document ,file-path))))))
 
 
 ;; (defun export-to-pdf (title pdf-path data-function result-function)
@@ -405,22 +415,27 @@
 ;;     ))
 
 (defun test-table ()
-  (page-template  :file-path #p"~/common-lisp/school/table.pdf" :table-title "test" :table-headings '("level" "class" "stream" "grade")
-								:table-data '(("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									      )))
+  (generate-pdf  (:file-path #p"~/common-lisp/school/table.pdf" :table-title "test" :table-headings '("level" "class" "stream" "grade")
+								 :table-data '(("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									       ))))
+(defun test-simple-table ()
+  (generate-pdf  (:file-path #p"~/common-lisp/school/simple-table.pdf"
+		  :table-title "Levels"
+		  :table-headings '("class" "stream" "subject" "papers")
+		  :table-data '(("s6" ("sciences" "arts") (("maths" "chemostry" "biology") "") ((("1" "2") ("1" "2" "3") ("1" "2" "3")) ""))))))
 
 (defun mine-1 (&optional (file #P"~/common-lisp/school/mine.pdf"))
   "the header dividing line is at y-740, all data must be below that."
