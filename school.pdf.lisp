@@ -1,8 +1,17 @@
-;;; handles creation of pdfs, tables and all that.
-;;; ensure that you understand the code before you alter it, save a version before altering.
-;;; uses the cl-pdf package
-
 (in-package :school.info)
+
+(defvar *test-rows-1* '(("s6" ("sciences" "arts") (("maths" "chemistry" "biology")) (("1" "2") ("1" "2" "3") ("1" "2" "3")))))
+(defvar *test-rows* '(("s6" (("sciences" (("maths" ("1" "2")) ("chemistry" ("1" "2" "3")) ("biology" ("1" "2" "3"))))
+			     "arts"))))
+
+|# 
+STRUCTURE OF THE DATA
+The table data is as such: all data is a list. Table data is a list of rows, each of which a list cells, which maybe a string or a list of subcells,
+A subcell can be a list of NON-LIST values or a string, consider the car of *test-rows* above s6 is a cell and so is (sciences arts) etc. sciences is 
+a subcell but so is (maths chemistry biology), if the a value inside a subcell has multiple values, those are presented as list of subcells in the next position,
+forexample: maths has multiple values (1 2) which are presented in the next cell as the first subcell because maths is the first sub-subcell, it will correspond to the
+first subcell in the next cell. if this is a bit confusing, look at *test-rows*
+#|
 
 (defun replace-nil (list &optional (with 0))
   "replace all nil with 0"
@@ -10,62 +19,89 @@
       (mapcar (lambda (e) (if (null e) with e)) list)
       with))
 
-;;; height in all these functions means the height of a cell in a table along y-axis. can be a cell, row or a list of rows
-
-(defun row-cell-heights (row)
-  "get heights of cells of a row"
-  (mapcar #'cell-heights row))
-
-(defun reduce-cell-heights (heights)
-  "given a list from rcollect-heights, get the maximum of each subcell"
-  (mapcar (lambda (height)
-	    (if (listp height)
-		(mapcar (lambda (h) (if (listp h)
-					(reduce #'max (replace-nil h))
-					h))
-			height)
-		height))
-	  heights))
-
-(defun get-cell-heights (row)
-  "function that returns reduced-cell-heights when given a row"
-  (reduce-cell-heights (collect-heights (row-cell-heights row))))
-
-(defun cell-heights (cell)
-  "get the height of a single cell"
-  (if (listp cell)
-      (mapcar (lambda (subcell) (if (listp subcell) (length subcell) 1)) cell)
+(defun cell-heights (row &optional number-of-cells)
+  "when given a row, find the number of cells the row will occupy downward (height)"
+  (declare (ignore number-of-cells))
+  (if (listp row)
+      (mapcar (lambda (cell)
+		(if (listp cell)
+		    `(,(cell-heights (car cell)) ,@(cell-heights (cdr cell)))
+		    1))
+	      row)
       1))
 
-(defun collect-heights (heights)
-  "when given heights from row-cell-heights, collect them such that each cell has a list of its corresponding subcells in different cols 
-   example: given (1 (2 3) (1 1)) return (1 ((2 1) (3 1)) ((1) (1))"
-  (let (collection (pos 0))
-    (loop for height in heights
-	  do (if (listp height)
-		 (let ((local-collection (mapcar (lambda (elem) (if (listp elem) elem (list elem))) height))
-		       (subheights (subseq heights (+ 1 pos))))
-		   (loop for h in subheights
-			 do (when (listp h)
-			      (setq local-collection (c-zip local-collection h))
-			      ))
-		   (setq collection (append collection (list local-collection))))
-		 (setq collection (append collection (list height))))
-	     (incf pos))
-    collection))
+(defun merge-cell-heights (heights)
+  (let* ((r-heights (reverse heights))
+	 (acc (list (car r-heights)))
+	 (current-data (car acc)))
+    (dolist (r-height (cdr r-heights))
+      (if (listp r-height)
+	  (let (local-acc (local-pos 0))
+	    (dolist (height r-height)
+	      (if (listp height)
+		  (let (sub-local-acc (sub-local-pos local-pos))
+		    (dolist (sub-height height)
+		      (setq sub-local-acc (append sub-local-acc (list (if (listp current-data)
+									  (let ((val (nth sub-local-pos current-data)))
+									    (if val val 1))
+									  current-data))))
+		      (incf sub-local-pos))
+		    (setq local-acc (append local-acc (list sub-local-acc)))
+		    (setq local-pos sub-local-pos))
+		  (progn (setq local-acc (append local-acc (list (if (listp current-data)
+								     (let ((val (nth local-pos current-data)))
+								       (if val val 1))
+								     current-data))))
+			 (incf local-pos))))
+	    (setq acc (append (list local-acc) acc))
+	    (setq current-data local-acc))
+	  (setq acc (append (list current-data) acc))))
+    acc))
 
-(defun merge-heights (heights)
-  "merge the collected heights, sum up all the heights in a col position to get the height of the subcell
-   forexample: given (1 ((2 1) (3 1)) ((1) (1))) from collect-heights returns (1 5 2) for each subcell in col position cell, return the max, then sum the max"
-  (mapcar (lambda (height)
-	    (if (listp height)
-		(reduce #'+ (replace-nil (mapcar (lambda (h)
-						   (if (listp h)
-						       (reduce #'max (replace-nil h))
-						       h))
-						 height)))
-		height))
-	  heights))
+(defun reduce-subcell-heights (heights)
+  (labels ((reduce-cell (cell)
+	     (cond ((equal 1 cell) 1)
+		   ((summable-listp cell)
+		    (mapcar (lambda (data) (reduce #'+ data)) cell))
+		   ((not (summable-listp cell))
+		    (mapcar #'reduce-cell cell)))))
+    (let ((r-heights (reverse heights)))
+      (reverse `(,(car r-heights) ,@(mapcar #'reduce-cell  (cdr r-heights)))))))
+
+(defun reduce-cell-heights (heights)
+  (labels ((reduce-cell (cell)
+	     (cond ((integerp cell) cell)
+		   ((summablep cell) (reduce #'+ cell)))))
+    (let ((reduced-heights (mapcar (lambda (height) (if (listp height) (mapcar #'reduce-cell height) height)) heights)))
+      (if (listp (car reduced-heights))
+	  `(,(reduce '+ (car reduced-heights)) ,@(cdr reduced-heights))
+	  reduced-heights))))
+
+(defun get-row-height (row)
+  "get the final height of a row"
+  (car (reduce-cell-heights (reduce-subcell-heights (merge-cell-heights (cell-heights row))))))
+
+(defun get-cell-heights (row)
+  "get the final height of a row"
+  (merge-cell-heights (cell-heights row)))
+
+(defun get-row-heights (rows)
+  "get the heights of a list of rows"
+  (reduce #'+ (mapcar #'get-row-height rows)))
+
+(defun subcell-height (subcell)
+  "the length of a subcell is 1 if not a list, or is the length of the list"
+  (if (listp subcell)
+      (length subcell)
+      1))
+
+(defun summable-listp (arg)
+  (not (member nil (mapcar #'summablep arg))))
+
+(defun summablep (arg)
+  (if (listp arg)
+      (not (member t (mapcar (lambda (elem) (not (numberp elem))) arg)))
+      nil))
 
 (defun c-zip (list1 list2 &optional acc)
   "adds elements in list2 to elements in list1; length of 1 must be equal or greater than length of 2"
@@ -73,19 +109,6 @@
 	(t
 	 (c-zip (cdr list1) (cdr list2) (append acc (list (append (car list1) (list (car list2)))))))))
 
-(defun row-height (row)
-  "get the height of a row"
-  (reduce #'max (merge-heights (collect-heights (row-cell-heights row)))))
-
-(defun row-heights (rows)
-  "get the heights of a list of rows"
-  (reduce #'+ (mapcar #'row-height rows)))
-
-(defun subcell-height (subcell)
-  "the length of a subcell is 1 if not a list, or is the length of the list"
-  (if (listp subcell)
-      (length subcell)
-      1))
 
 ;; TODO add data to more than pages.
 (defmacro generate-pdf ((&key pre-table (show-page-numbers t) (file-path #P"~/common-lisp/school/mine.pdf")  (type :table) table-data table-title table-headings (table-cell-size 15) (table-padding 6)) &body body)
@@ -109,7 +132,7 @@
      (labels ((set-y-position (new-postion) (setf y-position new-postion))
 	      (set-x-position (new-postion) (setf x-position new-postion))
 	      (draw-table (rows dimensions-data &key other-page)
-		(let* ((number-of-rows (row-heights rows))
+		(let* ((number-of-rows (get-row-heights rows))
 		       (x-start 0) 
 		       (y-start 0) ; the y-position at which table starts
 		       (x-end 0)
@@ -244,7 +267,7 @@
 		"given a list of rows and the number of rows a frontpage can hold, return a cons (front-page-rows.other-rows)"
 		(if rows
 		    (let* ((row (car rows))
-			   (height (row-height row))
+			   (height (get-row-height row))
 			   (new-height-acc (+ height height-acc)))
 		      (cond ((= new-height-acc number-of-rows) (cons (append acc (list row)) (cdr rows)))
 			    ((> new-height-acc number-of-rows) (cons acc rows))
@@ -254,7 +277,7 @@
 		"returns a list of rows to be put on each page (page-1 page-2 ... page-n)"
 		(if rows
 		    (let* ((row (car rows))
-			   (height (row-height row))
+			   (height (get-row-height row))
 			   (new-height-acc (+ height height-acc)))
 		      (cond ((= new-height-acc rows-per-page)
 			     (other-page-rows (cdr rows) rows-per-page (append acc (list (append lacc (list row))))))
@@ -265,7 +288,7 @@
 		"row is a list of cells, which maybe lists too, we use row height of 15 + 4 left padding + 4 for the line + 4 for the right padding"
 		(set-y-position y-start)
 		(set-x-position x-start)
-		(let ((height-of-row (row-height row))
+		(let ((height-of-row (get-row-height row))
 		      (cell-heights (get-cell-heights row))
 		      (pos 0)) ;; pos is to track the cell we are at for comparison with other heights
 		  (loop for cell in row and cell-height in cell-heights and cell-dimensions in dimensions
@@ -291,15 +314,15 @@
 		    (if (listp (car subcells))
 			(progn (let ((pos 1) ; start at one because we're comapring against length
 				     )
-				 (loop for cell in (car subcells)
+				 (loop for cell in (car subcells) and height in (car heights)
 				       do (pdf:in-text-mode
 					    ;; see above
 					    (pdf:move-text (+ x-start 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
 					    (pdf:draw-text cell)
-					    (pdf:move-to x-start (- y-position cell-size+padding))   
-					    (pdf:line-to (+ x-start dimensions) (- y-position cell-size+padding))
+					    (pdf:move-to x-start (- y-position (* height cell-size+padding)))   
+					    (pdf:line-to (+ x-start dimensions) (- y-position (* height cell-size+padding)))
 					    (pdf:stroke)
-					    (set-y-position (- y-position cell-size+padding)))
+					    (set-y-position (- y-position (* height cell-size+padding))))
 					  (incf pos)))
 			       (draw-subcells (cdr subcells) (cdr heights) dimensions x-start y-start))
 			(progn (pdf:in-text-mode
@@ -307,11 +330,17 @@
 				 (pdf:move-text (+ x-start 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
 				 (pdf:draw-text (car subcells))
 				 (unless (null (cdr subcells))
-				   (let ((y-stop (- y-position (* (car heights) cell-size+padding))))
+				   (let* ((height (if (listp (car heights))
+						      (reduce #'+ (car heights))
+						      (car heights)))
+					  (y-stop (- y-position (* height cell-size+padding))))
 				     (pdf:move-to x-start y-stop)
 				     (pdf:line-to (+ x-start dimensions) y-stop)
 				     (pdf:stroke))))
-			       (set-y-position (- y-position (* (car heights) cell-size+padding)))
+			       (set-y-position (- y-position (* (if (listp (car heights))
+								    (reduce #'+ (car heights))
+								    (car heights))
+								cell-size+padding)))
 			       (draw-subcells (cdr subcells) (cdr heights) dimensions x-start y-start)))
 		    (set-y-position y-start)))
 	      (draw-column-separators (dimensions x-start y-start y-end)
@@ -331,7 +360,7 @@
 		(set-y-position y-start)
 		(let ((pos 1))
 		  (dolist (row rows)
-		    (let* ((row-len (row-height row))
+		    (let* ((row-len (get-row-height row))
 			   (height (* row-len cell-size+padding)))
 		      (set-y-position (- y-position height))
 		      (pdf:in-text-mode
@@ -416,26 +445,26 @@
 
 (defun test-table ()
   (generate-pdf  (:file-path #p"~/common-lisp/school/table.pdf" :table-title "test" :table-headings '("level" "class" "stream" "grade")
-								 :table-data '(("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
-									       ))))
+								:table-data '(("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south") ("north" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ("a level" ("s1" "s2" "s3") (("east" "west" "south") ("east" "west" "south")) "A")
+									      ))))
 (defun test-simple-table ()
   (generate-pdf  (:file-path #p"~/common-lisp/school/simple-table.pdf"
 		  :table-title "Levels"
 		  :table-headings '("class" "stream" "subject" "papers")
-		  :table-data '(("s6" ("sciences" "arts") (("maths" "chemostry" "biology") "") ((("1" "2") ("1" "2" "3") ("1" "2" "3")) ""))))))
+		  :table-data '(("s6" ("sciences" "arts") (("maths" "chemostry" "biology")) (("1" "2") ("1" "2" "3") ("1" "2" "3")))))))
 
 (defun mine-1 (&optional (file #P"~/common-lisp/school/mine.pdf"))
   "the header dividing line is at y-740, all data must be below that."
