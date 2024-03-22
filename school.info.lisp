@@ -571,6 +571,11 @@
     (dorm-menu dorm-menu)
     ))
 
+(defgeneric iconphoto (widget image-path))
+(defmethod iconphoto ((w widget) image-path)
+  ;; first create the photo in tk with a name logo, then supply the name to the window to display it.
+  (format-wish "image create photo logo -file ~a -format png; wm iconphoto ~a logo" image-path (widget-path w))
+  w)
 
 (defun start ()
   "start the info application, try to create the tables, bind the error to continue execution if the tables are already present. enable foreign key support on the database"
@@ -581,7 +586,7 @@
       (sqlite-error (err)
 	(declare (ignore err)))))
   (with-ltk ()
-					; (iconbitmap #p"/home/lam/common-lisp/school/favicon.ico")
+    (iconphoto *tk* "static/logos/info.png")
     (create-menubar)
     (minsize *tk* 800 600)
     ;; start in maximized on OSX and Windows
