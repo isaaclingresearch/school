@@ -1,4 +1,8 @@
-(in-package :school.info)
+(defpackage :school.pdf
+  (:use :cl :cl-pdf)
+  (:export :generate-pdf :test-table :test-simple-table))
+
+(in-package :school.pdf)
 
 (defvar *test-rows-1* '(("s6" ("sciences" "arts") (("maths" "chemistry" "biology")) (("1" "2") ("1" "2" "3") ("1" "2" "3")))))
 (defvar *test-rows* '(("s6" (("sciences" (("maths" ("1" "2")) ("chemistry" ("1" "2" "3")) ("biology" ("1" "2" "3"))))
