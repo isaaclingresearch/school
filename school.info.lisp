@@ -191,13 +191,13 @@
 
 (defun prepare-main-frame ()
   (grid *main-frame* 0 0)
-  (grid-columnconfigure *tk* 0 :weight 1) 
-  (grid-rowconfigure *tk* 0 :weight 1))
+  (grid-columnconfigure *main-frame* 0 :weight 1) 
+  (grid-rowconfigure *main-frame* 0 :weight 1))
 
 (defun make-response (message)
   (create-menubar)
-  (grid-columnconfigure *tk* 0 :weight 1) 
-  (grid-rowconfigure *tk* 0 :weight 1)
+  (grid-columnconfigure *main-frame* 0 :weight 1) 
+  (grid-rowconfigure *main-frame* 0 :weight 1)
   (when *main-frame*
     (destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))

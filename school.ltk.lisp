@@ -7,10 +7,7 @@
 
 (in-package :school.ltk)
 
-(defgeneric iconphoto (widget image-path)
-					;"this creates an icon photo for a given window"
-  )
-
+(defgeneric iconphoto (widget image-path))
 (defmethod iconphoto ((w widget) image-path)
   ;; first create the photo in tk with a name logo, then supply the name to the window to display it.
   (format-wish "image create photo logo -file ~a -format png; wm iconphoto ~a logo" image-path (widget-path w))
