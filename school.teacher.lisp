@@ -43,7 +43,12 @@
     ))
 
 
-(defun prepare-main-window ()
+(defun prepare-main-frame ()
+  (grid *main-frame* 0 0)
+  (grid-columnconfigure *main-frame* 0 :weight 1) 
+  (grid-rowconfigure *main-frame* 0 :weight 1))
+
+(defun center-main-frame ()
   (grid *main-frame* 0 0)
   (grid-columnconfigure *tk* 0 :weight 1) 
   (grid-rowconfigure *tk* 0 :weight 1))
@@ -146,7 +151,7 @@
 						    (make-response "A new teacher has been added.")
 						    ))))
 	)
-    (prepare-main-window)
+    (center-main-frame)
     (grid title 0 0)
     (grid surname-label 1 0)
     (grid surname-entry 1 1 :pady 2)
@@ -190,7 +195,8 @@
   (unless (null *main-frame*)
     (ltk:destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
- (prepare-main-window)
+  (wm-title *tk* "Teacher Information Table")
+ (prepare-main-frame)
   (let* ((grid-position 0)
 	 (teacher-info (append  `(( "Id" "Surname" "First name" "Date of birth" "Email" "School Email" "Telephone 1" "Telephone 2" "Sex" "Marital Status" "NUmber of children"
 					 "Subject 1" "Subject 2" "Subject 3" "Subject 4" "Residence" "Code" "CV" "Added on"))
@@ -203,6 +209,6 @@
 	  (incf local-pos)))
       (grid (make-instance 'separator :master *main-frame* :orientation "horizontal") (incf grid-position) 0 :sticky "ew" :columnspan 19)
       (incf grid-position))
-    (loop for i from 1 to 19
-	  do (loop for y from 0 to number-of-teachers
+    (loop for i from 1 to 19 ; draw separators on each col
+	  do (loop for y from 0 to number-of-teachers ; on each row
 		   do (grid (make-instance 'separator :master *main-frame* :orientation "vertical") y i :rowspan number-of-teachers :sticky "nsw")))))

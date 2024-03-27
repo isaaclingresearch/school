@@ -189,7 +189,7 @@
   (conn 
     (execute-non-query db "delete from papers where id = ?" paper-id)))
 
-(defun prepare-main-window ()
+(defun prepare-main-frame ()
   (grid *main-frame* 0 0)
   (grid-columnconfigure *tk* 0 :weight 1) 
   (grid-rowconfigure *tk* 0 :weight 1))
@@ -630,7 +630,7 @@
 									       (text email-entry)
 									       (text logo-entry))
 							  (make-response "The school details have been saved.")))))
-      (prepare-main-window)
+      (prepare-main-frame)
       (grid heading 0 0 :padx 10 :pady 5)
       (grid  name-label 1 0 :padx 10 :pady 5)
       (grid  name-entry 1 2 :padx 10 :pady 5)
@@ -675,7 +675,7 @@
 	   (email-data (make-instance 'label :master *main-frame* :text (get-detail data "email")))
 	   (logo-label (make-instance 'label :master *main-frame* :text "Logo"))
 	   (logo-data (make-instance 'label :master *main-frame* :text (get-detail data "logo"))))
-      (prepare-main-window)
+      (prepare-main-frame)
       (grid heading 0 0 :padx 10 :pady 5)
       (grid name-label 1 0 :padx 10 :pady 5)
       (grid name-data 1 2 :padx 10 :pady 5)
@@ -745,7 +745,7 @@
 										    (setq index (+ 1 index)))
 									       finally (grid save-button index 1 :pady 10) ; change the position of the save-button
 										       (setq index (+ 1 index))))))))))
-    (prepare-main-window)
+    (prepare-main-frame)
     ;; show these when adding a new level
     (unless level
       (grid level-number-label 1 0 :padx 10 :pady 5)
@@ -763,7 +763,7 @@
   (unless (null *main-frame*)
     (ltk:destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (prepare-main-window)
+  (prepare-main-frame)
   (wm-title *tk* "School Info - Levels")
   (grid (make-instance 'label :master *main-frame* :text "Levels") 0 0)
   (grid (make-instance 'separator :master *main-frame*) 1 0 :sticky "nsew")
@@ -823,7 +823,7 @@
 										    (setq index (+ 1 index)))
 									       finally (grid save-button index 1 :pady 10) ; change the position of the save-button
 										       (setq index (+ 1 index))))))))))
-    (prepare-main-window)
+    (prepare-main-frame)
     ;; show these when adding a new house
     (unless house
       (grid house-number-label 1 0 :padx 10 :pady 5)
@@ -840,7 +840,7 @@
   (unless (null *main-frame*)
     (ltk:destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (prepare-main-window)
+  (prepare-main-frame)
   (wm-title *tk* "School Info - Houses")
   (grid (make-instance 'label :master *main-frame* :text "Houses") 0 0)
   (grid (make-instance 'separator :master *main-frame*) 1 0 :sticky "nsew")
@@ -900,7 +900,7 @@
 										   (setq index (+ 1 index)))
 									      finally (grid save-button index 1 :pady 10) ; change the position of the save-button
 										      (setq index (+ 1 index))))))))))
-    (prepare-main-window)
+    (prepare-main-frame)
     ;; show these when adding a new dorm
     (unless dorm
       (grid dorm-number-label 1 0 :padx 10 :pady 5)
@@ -917,7 +917,7 @@
   (unless (null *main-frame*)
     (ltk:destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (prepare-main-window)
+  (prepare-main-frame)
   (wm-title *tk* "School Info - Dormitories")
   (grid (make-instance 'label :master *main-frame* :text "Dormitories") 0 0)
   (grid (make-instance 'separator :master *main-frame*) 1 0 :sticky "nsew")
@@ -983,7 +983,7 @@
 											  (setq index (+ 1 index)))
 										     finally (grid save-button index 1 :pady 10) ; change the position of the save-button
 											     (setq index (+ 1 index))))))))))
-	  (prepare-main-window)
+	  (prepare-main-frame)
 	  ;; show these when adding a new class
 	  (unless class
 	    (grid class-number-label 1 0 :padx 10 :pady 5)
@@ -997,7 +997,7 @@
 	  (grid save-button 4 1 :pady 10)
 	  (setq index 5))
 	(let ((error-text (make-instance 'label :master *main-frame* :text "There are no levels, first create a level to continue.")))
-	  (prepare-main-window)
+	  (prepare-main-frame)
 	  (grid error-text 0 0 :padx 10 :pady 5))
 	)))
 
@@ -1008,7 +1008,7 @@ display the levels and classes in a grid, use x-pos and y-pos to control the loc
   (unless (null *main-frame*)
     (ltk:destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (prepare-main-window)
+  (prepare-main-frame)
   (wm-title *tk* "School Info - Classes")
   ;; make table headings
   (grid (make-instance 'label :master *main-frame* :text "Level") 0 0)
@@ -1088,7 +1088,7 @@ display the levels and classes in a grid, use x-pos and y-pos to control the loc
 											   (setq index (+ 1 index)))
 										      finally (grid save-button index 1 :pady 10) ; change the position of the save-button
 											      (setq index (+ 1 index))))))))))
-	  (prepare-main-window)
+	  (prepare-main-frame)
 	  ;; show these when adding a new stream
 	  (unless stream-data
 	    (grid stream-number-label 1 0 :padx 10 :pady 5)
@@ -1102,7 +1102,7 @@ display the levels and classes in a grid, use x-pos and y-pos to control the loc
 	  (grid save-button 4 1 :pady 10)
 	  (setq index 5))
 	(let ((error-text (make-instance 'label :master *main-frame* :text "There are no classes, first create a class to add stream to.")))
-	  (prepare-main-window)
+	  (prepare-main-frame)
 	  (grid error-text 0 0 :padx 10 :pady 5))
 	)))
 
@@ -1111,7 +1111,7 @@ display the levels and classes in a grid, use x-pos and y-pos to control the loc
   (unless (null *main-frame*)
     (ltk:destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (prepare-main-window)
+  (prepare-main-frame)
   (wm-title *tk* "School Info - Streams")
   ;; show table headings
   (grid (make-instance 'label :master *main-frame* :text "Level") 0 0)
@@ -1208,7 +1208,7 @@ display the levels and classes in a grid, use x-pos and y-pos to control the loc
 										   finally (grid save-button index 1 :pady 10) ; change the position of the save-button
 											   (setq index (+ 1 index)))))))))
 	   )
-      (prepare-main-window)
+      (prepare-main-frame)
       ;; show these when adding a new subject
       (unless subject-data
 	(grid subject-number-label 1 0 :padx 10 :pady 5)
@@ -1231,7 +1231,7 @@ display the levels and classes in a grid, use x-pos and y-pos to control the loc
   (unless (null *main-frame*)
     (ltk:destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (prepare-main-window)
+  (prepare-main-frame)
   (wm-title *tk* "School Info - Subjects")
   ;; show table headings
   (grid (make-instance 'label :master *main-frame* :text "Level") 0 0)
@@ -1336,7 +1336,7 @@ display the levels and classes in a grid, use x-pos and y-pos to control the loc
 										 finally (grid save-button index 1 :pady 10) ; change the position of the save-button
 											 (setq index (+ 1 index)))))))))
 	   )
-      (prepare-main-window)
+      (prepare-main-frame)
       ;; show these when adding a new paper
       (unless paper-data
 	(grid paper-number-label 1 0 :padx 10 :pady 5)
@@ -1362,7 +1362,7 @@ display the levels and classes in a grid, use x-pos and y-pos to control the loc
   (unless (null *main-frame*)
     (ltk:destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (prepare-main-window)
+  (prepare-main-frame)
   (wm-title *tk* "School Info - Subject Papers")
   ;; show table headings
   (grid (make-instance 'label :master *main-frame* :text "Level") 0 0)
@@ -1420,11 +1420,11 @@ display the levels and classes in a grid, use x-pos and y-pos to control the loc
     (if stream-subjects
 	(let* ((subjects-label (make-instance 'label :master *main-frame* :text (format nil "Subjects for ~a - ~a" (get-class-name (caddr stream-data)) (cadr stream-data))))
 	       (subject-listbox (make-instance 'listbox :master *main-frame*)))
-	  (prepare-main-window)
+	  (prepare-main-frame)
 	  (listbox-append subject-listbox (mapcar #'cadr stream-subjects))
 	  (grid subjects-label 0 0 :padx 10 :pady 5)
 	  (grid subject-listbox 1 0 :padx 10 :pady 5))
 	(let ((error-text (make-instance 'label :master *main-frame* :text (format nil "There are no subjects for ~a ~a." (get-class-name (caddr stream-data)) (cadr stream-data)))))
-	  (prepare-main-window)
+	  (prepare-main-frame)
 	  (grid error-text 0 0 :padx 10 :pady 5))
 	)))
