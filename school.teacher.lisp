@@ -10,16 +10,27 @@
 (defparameter *menubar* nil)
 
 (defun create-tables (database)
-  (execute-non-query database "create table teacher_info (id integer primary key, surname text, firstname text, date_of_birth text, email text, tel_no1 text, tel_no2 text, sex text, marital_status text, number_of_children integer, subject_1 text, subject_2 text, subject_3 text, subject_4 text, teacher_code text, residence text, cv text, added_on default current_timestamp"))
+  (execute-non-query database "create table teacher_info (id integer primary key, surname text, firstname text, date_of_birth text, email text unique, school_email text unique, tel_no1 text unique, tel_no2 text, sex text, marital_status text, number_of_children integer, subject_1 text, subject_2 text, subject_3 text, subject_4 text, teacher_code text unique, residence text, cv text, added_on default current_timestamp)"))
+
+(defun create-or-edit-teacher (surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children subject1 subject2 subject3 subject4 teacher-code residence cv)
+  "function to save or edit teacher data"
+  (conn
+   (execute-non-query db "insert or replace into teacher_info (surname, firstname, date_of_birth, email, school_email, tel_no1, tel_no2, sex, marital_status, number_of_children, subject_1, subject_2, subject_3, subject_4, teacher_code, residence, cv) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children subject1 subject2 subject3 subject4 teacher-code residence cv)))
+
+(defun get-teacher-info (&optional id)
+  "select teacher id, return all values or one corresponding to the given id"
+  (conn (if id
+	    (execute-to-list db "select * from teacher_info where id = ?" id)
+	    (execute-to-list db "select * from teacher_info"))))
 
 (defun start ()
   "start the info application, try to create the tables, bind the error to continue execution if the tables are already present. enable foreign key support on the database"
   (conn
-    (execute-non-query database "pragma foreign_keys = on") 
+    (execute-non-query db "pragma foreign_keys = on") 
     (handler-case
-        (create-tables database)
+	(create-tables db)
       (sqlite-error (err)
-        (declare (ignore err))))
+	(declare (ignore err))))
     )
   (with-ltk ()
     (iconphoto *tk* "~/common-lisp/school/static/logos/teacher.png")
@@ -37,29 +48,44 @@
   (grid-columnconfigure *tk* 0 :weight 1) 
   (grid-rowconfigure *tk* 0 :weight 1))
 
+
+(defun make-response (message)
+  (create-menubar)
+  (grid-columnconfigure *tk* 0 :weight 1) 
+  (grid-rowconfigure *tk* 0 :weight 1)
+  (when *main-frame*
+    (destroy *main-frame*))
+  (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  (grid *main-frame* 0 0)
+  (grid (make-instance 'label :master *main-frame* :text message) 1 0)
+  )
+
+
 (defun create-menubar ()
   "create a new menu bar, if an old one exists, destroy it, then recreate a new one."
   (when *menubar*
     (destroy *menubar*))
   (setq *menubar* (make-instance 'menubar))
-  (let* ((new (make-instance 'menu :master *menubar* :text "New"))
-	 (edit (make-instance 'menu :master *menubar* :text "Edit"))
-	 (show (make-instance 'menu :master *menubar* :text "Show"))
-	 (print (make-instance 'menu :master *menubar* :text "Print")))
-    (declare (ignore edit show print))
-    (new-teacher-menu new)
+  (let* ((teachers (make-instance 'menu :master *menubar* :text "Teachers"))
+	 (departments (make-instance 'menu :master *menubar* :text "Departments")))
+    (declare (ignore departments))
+    (new-teacher-menu teachers)
     ))
 
 (defun new-teacher-menu (menu)
   "add menu buttons to new teacher menu"
-  (make-instance 'menubutton :master menu :text "New Teacher" :command (lambda () (new-teacher-form))))
+  (make-instance 'menubutton :master menu :text "New Teacher" :command (lambda () (new-teacher-form)))
+  (make-instance 'menubutton :master menu :text "Show Teachers" :command (lambda () (show-teacher-info)))
+  (make-instance 'menubutton :master menu :text "Edit Teacher Info" :command (lambda () (new-teacher-form)))
+  (make-instance 'menubutton :master menu :text "Print Teacher Info" :command (lambda () (new-teacher-form)))
+  )
 
 (defun new-teacher-form ()
   "display form to get new teacher details"
   (unless (null *main-frame*)
     (ltk:destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-  (let ((title (make-instance 'label :master *main-frame* :text "Enter the details of the teacher."))
+  (let* ((title (make-instance 'label :master *main-frame* :text "Enter the details of the teacher."))
 	(surname-label (make-instance 'label :master *main-frame* :text "Surname"))
 	(surname-entry (make-instance 'entry :master *main-frame*))
 	(given-name-label (make-instance 'label :master *main-frame* :text "Given Name"))
@@ -83,7 +109,7 @@
 	(subject-1-label (make-instance 'label :master *main-frame* :text "Subject taught 1"))
 	(subject-1-entry (make-instance 'entry :master *main-frame*))
 	(subject-2-label (make-instance 'label :master *main-frame* :text "Subject taught 2"))
-	(subject-2-entry (make-instance 'entry :master *main-frame*))
+	 (subject-2-entry (make-instance 'entry :master *main-frame*))
 	(subject-3-label (make-instance 'label :master *main-frame* :text "Subject taught 3"))
 	(subject-3-entry (make-instance 'entry :master *main-frame*))
 	(subject-4-label (make-instance 'label :master *main-frame* :text "Subject taught 4"))
@@ -95,7 +121,30 @@
 	(cv-label (make-instance 'label :master *main-frame* :text "CV"))
 	(cv-entry (make-instance 'entry :master *main-frame*))
 	(button (make-instance 'button :master *main-frame* :text "Save New Teacher"
-				       :command (lambda () ())))
+				       :command (lambda ()
+						  (let ((surname (text surname-entry))
+							(given-name (text given-name-entry))
+							(date-of-birth (text date-of-birth-entry))
+							(email (text email-entry))
+							(school-email (text school-email-entry))
+							(phone-number-1 (text phone-number-1-entry))
+							(phone-number-2 (text phone-number-2-entry))
+							(sex (text sex-entry))
+							(marital-status (text marital-status-entry))
+							(number-of-children (text number-of-children-entry))
+							(subject-1 (text subject-1-entry))
+							(subject-2 (text subject-2-entry))
+							(subject-3 (text subject-3-entry))
+							(subject-4 (text subject-4-entry))
+							(residence (text residence-entry))
+							(teacher-code (text teacher-code-entry))
+							(cv (text cv-entry))
+						       )
+						    (print school-email)
+						    (create-or-edit-teacher surname given-name date-of-birth email school-email phone-number-1 phone-number-2 sex marital-status
+									    number-of-children subject-1 subject-2 subject-3 subject-4 teacher-code residence cv)
+						    (make-response "A new teacher has been added.")
+						    ))))
 	)
     (prepare-main-window)
     (grid title 0 0)
@@ -135,3 +184,25 @@
     (grid cv-entry 17 1 :pady 2)
     (grid button 18 1 :pady 3)
     ))
+
+(defun show-teacher-info ()
+  "display all teacher information with an edit button"
+  (unless (null *main-frame*)
+    (ltk:destroy *main-frame*))
+  (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+ (prepare-main-window)
+  (let* ((grid-position 0)
+	 (teacher-info (append  `(( "Id" "Surname" "First name" "Date of birth" "Email" "School Email" "Telephone 1" "Telephone 2" "Sex" "Marital Status" "NUmber of children"
+					 "Subject 1" "Subject 2" "Subject 3" "Subject 4" "Residence" "Code" "CV" "Added on"))
+				(get-teacher-info)))
+	 (number-of-teachers (length teacher-info)))
+    (dolist (teacher teacher-info)
+      (let ((local-pos 0))
+	(dolist (cell-val teacher)
+	  (grid (make-instance 'label :text cell-val :master *main-frame*) grid-position local-pos)
+	  (incf local-pos)))
+      (grid (make-instance 'separator :master *main-frame* :orientation "horizontal") (incf grid-position) 0 :sticky "ew" :columnspan 19)
+      (incf grid-position))
+    (loop for i from 1 to 19
+	  do (loop for y from 0 to number-of-teachers
+		   do (grid (make-instance 'separator :master *main-frame* :orientation "vertical") y i :rowspan number-of-teachers :sticky "nsw")))))

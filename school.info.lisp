@@ -7,7 +7,6 @@
   (:export :start :create-tables))
 
 (in-package :school.info)
-
 (defparameter *main-frame* nil)		
 (defparameter *menubar* nil)
 (defparameter *missing-details-message* "Some school details required to make PDFs are missing, please enter under School Details menu and try again.")
@@ -583,6 +582,8 @@
       (setf (wm-state *tk*) 'zoomed))
     (wm-title *tk* "School Info")
     ))
+
+(defparameter *logo-path* "static/logos/school.png")
 
 (defun details-form ()
   (unless (null *main-frame*)
