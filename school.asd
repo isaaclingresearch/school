@@ -12,6 +12,7 @@
   :depends-on (:ltk :sqlite :cl-pdf :cl-pdf-parser :str)
   :components ((:file "school")
 	       (:file "school.ltk")
+	       (:file "tktable")
 	       (:file "school.pdf")
 	       (:file "school.info" :depends-on ("school.ltk" "school.pdf"))
 	       (:file "school.teacher")
