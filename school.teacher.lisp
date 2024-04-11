@@ -1,5 +1,5 @@
 (defpackage :school.teacher
-  (:use :cl :sqlite :ltk :cl-pdf :str :school.ltk :school :tktable)
+  (:use :cl :sqlite :ltk :cl-pdf :str :school.ltk :school :tktable :jonathan)
   (:shadow cl-pdf:image cl-pdf:make-image cl-pdf:font-metrics cl-pdf:bbox cl-pdf:name cl-pdf:scale str:repeat)
   (:export :start))
 
@@ -10,14 +10,29 @@
 (defparameter *menubar* nil)
 
 (defun create-tables (database)
+  ;; subjects are a json array.
+  (execute-non-query database "create table department_info (id integer primary key, name text, level text, subjects text, added_on default current_timestamp)")
   (execute-non-query database "create table teacher_info (id integer primary key, surname text, firstname text, date_of_birth text, email text unique, school_email text unique, tel_no1 text unique, tel_no2 text, sex text, marital_status text, number_of_children integer, subject_1 text, subject_2 text, subject_3 text, subject_4 text, teacher_code text unique, residence text, cv text, added_on default current_timestamp)"))
+
+(defun create-or-edit-department (name level subjects &optional id)
+  "create a department"
+  (conn
+    (if id
+	(execute-non-query db "update department_info set name = ?, level = ?, subjects = ? where id = ?" name level subjects id)
+	(execute-non-query db "insert into department_info (name, level, subjects) values (?, ?, ?)" name level subjects))))
+
+(defun get-department-info (&optional id)
+  "select department id, return all values or one corresponding to the given id"
+  (conn (if id
+	    (execute-to-list db "select * from department_info where id = ?" id)
+	    (execute-to-list db "select * from department_info"))))
 
 (defun create-or-edit-teacher (surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children subject1 subject2 subject3 subject4 teacher-code residence cv &optional id added-on)
   "function to save or edit teacher data"
   (conn
     (if id
 	(execute-non-query db "update teacher_info set surname = ?, firstname = ?, date_of_birth = ?, email = ?, school_email = ?, tel_no1 = ?, tel_no2 = ?, sex = ?, marital_status = ?, number_of_children = ?, subject_1 = ?, subject_2 = ?, subject_3 = ?, subject_4 = ?, teacher_code = ?, residence = ?, cv = ?, added_on = ? where id = ?"surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children subject1 subject2 subject3 subject4 teacher-code residence cv added-on id)
-	(execute-non-query db "insert or into teacher_info (surname, firstname, date_of_birth, email, school_email, tel_no1, tel_no2, sex, marital_status, number_of_children, subject_1, subject_2, subject_3, subject_4, teacher_code, residence, cv) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children subject1 subject2 subject3 subject4 teacher-code residence cv))))
+	(execute-non-query db "insert into teacher_info (surname, firstname, date_of_birth, email, school_email, tel_no1, tel_no2, sex, marital_status, number_of_children, subject_1, subject_2, subject_3, subject_4, teacher_code, residence, cv) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children subject1 subject2 subject3 subject4 teacher-code residence cv))))
 
 (defun get-teacher-info (&optional id)
   "select teacher id, return all values or one corresponding to the given id"
@@ -47,7 +62,7 @@
 
 (defun prepare-main-frame ()
   (grid *main-frame* 0 0)
-  (format-wish "grid anchor . nw")
+  (format-wish "grid anchor ~a nw" (widget-path *tk*))
   (grid-columnconfigure *tk* 0 :weight 1) 
   (grid-rowconfigure *tk* 0 :weight 1))
 
@@ -77,8 +92,8 @@
   (setq *menubar* (make-instance 'menubar))
   (let* ((teachers (make-instance 'menu :master *menubar* :text "Teachers"))
 	 (departments (make-instance 'menu :master *menubar* :text "Departments")))
-    (declare (ignore departments))
     (teacher-menu teachers)
+    (department-menu departments)
     ))
 
 (defun teacher-menu (menu)
@@ -87,6 +102,72 @@
   (make-instance 'menubutton :master menu :text "Show/Edit Teachers" :command (lambda () (show/edit-teacher-info)))
   (make-instance 'menubutton :master menu :text "Print Teacher Info" :command (lambda () (new-teacher-form)))
   )
+
+(defun department-menu (menu)
+  "add buttons to the department menu"
+  (make-instance 'menubutton :master menu :text "New department" :command (lambda () (new-department-form)))
+  (let ((edit-menu (make-instance 'menu :master menu :text "Edit department")))
+    (dolist (department (get-department-info))
+      (make-instance 'menubutton :master edit-menu :text (format nil "~a - ~a" (third department) (second department))
+				 :command (lambda () (select-department-subjects (second department) (third department) (parse (fourth department)) (car department))))))
+  (make-instance 'menubutton :master menu :text "Show department" :command (lambda ())))
+
+(defun new-department-form (&optional department-id)
+  "display a form to create or edit a department's details"
+  (declare (ignore department-id))
+  (unless (null  *main-frame*)
+    (ltk:destroy *main-frame*))
+  (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+   (prepare-main-frame)
+  (wm-title *tk* "Create or Edit Department")
+  (let* ((name-entry (make-instance 'entry :master *main-frame*))
+	 (levels (mapcar #'second (school.info:|get-level|)))
+	 (level-entry (make-instance 'combobox :master *main-frame* :text (car levels) :values levels))
+	 (next-button (make-instance 'button :master *main-frame* :text "Next"
+					     :command (lambda () (select-department-subjects (text name-entry) (text level-entry))))))
+    (grid (make-instance 'label :master *main-frame* :text "Name of department") 0 0)
+    (grid name-entry 0 1 :pady 2)
+    (grid (make-instance 'label :master *main-frame* :text "Level") 1 0)
+    (grid level-entry 1 1 :pady 2)
+    (grid next-button 2 1)))
+
+(defun select-department-subjects (department-name level &optional subjects id)
+  "display a list of all subjects in a level to get which belong to a department"
+  (unless (null  *main-frame*)
+    (ltk:destroy *main-frame*))
+  (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  (center-main-frame)
+  (wm-title *tk* "Create or Edit Department")
+  (let* ((name-entry (make-instance 'entry :master *main-frame* :text department-name))
+	 (levels (mapcar #'second (school.info:|get-level|)))
+	 (level-entry (make-instance 'combobox :master *main-frame* :text level :values levels))
+	 (level-id (school.info::|get-level-id| level))
+	 (pos 0)
+	 subject-check-buttons
+	 selected-subjects
+	 (level-subjects (school.info::get-level-subjects level-id)) 
+	 (save-button (make-instance 'button :master *main-frame* :text "Save department"
+				     :command (lambda ()
+						(dolist (subject-check-button subject-check-buttons)
+						  (if (value subject-check-button)
+						      (setq selected-subjects (append selected-subjects (list (text subject-check-button))))))
+						(create-or-edit-department (text name-entry) (text level-entry) (to-json selected-subjects) id)
+						(make-response "The new department has been saved.")))))
+    (grid (make-instance 'label :master *main-frame* :text "Name of department") 0 0)
+    (grid name-entry 0 1 :pady 2)
+    (grid (make-instance 'label :master *main-frame* :text "Level") 1 0)
+    (grid level-entry 1 1 :pady 2)
+    (grid (make-instance 'label :master *main-frame* :text "Select all subjects under this department") 2 1)
+    (setq pos 3)
+    (unless (null level-subjects)
+      (dolist (subject level-subjects)
+	(let ((subject-check-button (make-instance 'check-button :master *main-frame* :text subject)))
+	  (when (member subject subjects :test #'equal) ; if the subject is in the saved subjects list, select it
+	    (format-wish "~a invoke" (widget-path subject-check-button)))
+	  (setq subject-check-buttons (append subject-check-buttons (list subject-check-button)))
+	  (grid subject-check-button pos 0)
+	  (incf pos))))
+    (grid save-button pos 1)))
 
 (defun new-teacher-form (&optional teacher-id)
   "display form to get new teacher details"

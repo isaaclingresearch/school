@@ -4,7 +4,7 @@
 (defpackage :school.info
   (:use :cl :sqlite :ltk :cl-pdf :str :school.ltk :school)
   (:shadow cl-pdf:image cl-pdf:make-image cl-pdf:font-metrics cl-pdf:bbox cl-pdf:name cl-pdf:scale str:repeat)
-  (:export :start :create-tables))
+  (:export :start :create-tables :|get-level|))
 
 (in-package :school.info)
 (defparameter *main-frame* nil)		
@@ -155,6 +155,14 @@
     (if stream-id
 	(execute-to-list db "select id, subject, stream_id, subject_code from subjects where stream_id = ?" stream-id)
 	(execute-to-list db "select id, subject, stream_id, subject_code from subjects"))))
+
+(defun get-level-subjects (level-id)
+  "return a list of subjects in a level, now note that subjects are stored on a stream basis, 
+   so you'll begin with class stream then subject and then remove the duplicates"
+  (let* ((class-ids (mapcar #'car (get-classes level-id)))
+	 (stream-ids (let (acc) (loop for class-id in class-ids do (setq acc (append acc (mapcar #'car (get-streams class-id))))) acc))
+	 (subjects (let (acc) (loop for stream-id in stream-ids do (setq acc (append acc (mapcar #'second (get-subjects stream-id))))) acc)))
+    (remove-duplicates subjects :test #'equal)))
 
 (defun get-stream-subjects (stream-id)
   (conn 
