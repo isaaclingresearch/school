@@ -2,7 +2,7 @@
 ;;; general school information means the basic structure of the school.
 
 (defpackage :school.info
-  (:use :cl :sqlite :ltk :cl-pdf :str :school.ltk :school)
+  (:use :cl :sqlite :ltk :cl-pdf :str :school.ltk :school :school.pdf)
   (:shadow cl-pdf:image cl-pdf:make-image cl-pdf:font-metrics cl-pdf:bbox cl-pdf:name cl-pdf:scale str:repeat)
   (:export :start :create-tables :|get-level|))
 
@@ -204,12 +204,12 @@
 
 (defun make-response (message)
   (create-menubar)
-  (grid-columnconfigure *main-frame* 0 :weight 1) 
-  (grid-rowconfigure *main-frame* 0 :weight 1)
   (when *main-frame*
     (destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
   (grid *main-frame* 0 0)
+  (grid-columnconfigure *main-frame* 0 :weight 1) 
+  (grid-rowconfigure *main-frame* 0 :weight 1)
   (grid (make-instance 'label :master *main-frame* :text message) 1 0)
   )
 
@@ -582,7 +582,7 @@
       (sqlite-error (err)
 	(declare (ignore err)))))
   (with-ltk ()
-    (iconphoto *tk* "static/logos/info.png")
+    (iconphoto *tk* "~/common-lisp/school/static/logos/info.png")
     (create-menubar)
     (minsize *tk* 800 600)
     ;; start in maximized on OSX and Windows

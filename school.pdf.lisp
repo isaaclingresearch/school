@@ -1,5 +1,5 @@
 (defpackage :school.pdf
-  (:use :cl :cl-pdf)
+  (:use :cl :cl-pdf :school :sqlite)
   (:export :generate-pdf :test-table :test-simple-table))
 
 (in-package :school.pdf)
@@ -7,6 +7,17 @@
 (defvar *test-rows-1* '(("s6" ("sciences" "arts") (("maths" "chemistry" "biology")) (("1" "2") ("1" "2" "3") ("1" "2" "3")))))
 (defvar *test-rows* '(("s6" (("sciences" (("maths" ("1" "2")) ("chemistry" ("1" "2" "3")) ("biology" ("1" "2" "3"))))
 			     "arts"))))
+
+(defvar *a2-portrait-page-bounds* #(0 0 1191 1684))
+(defvar *a2-landscape-page-bounds* #(0 0 1684 1191))
+(defvar *a3-portrait-page-bounds* #(0 0 842 1191))
+(defvar *a3-landscape-page-bounds* #(0 0 1191 842))
+(defvar *a4-page-bounds* #(0 0 595 842))
+(defvar *a5-portrait-page-bounds* #(0 0 420 595))
+(defvar *a5-landscape-page-bounds* #(0 0 595 420))
+
+(defun get-school-details ()
+  (conn (execute-to-list db "select detail_name, detail from school_details")))
 
 |# 
 STRUCTURE OF THE DATA
@@ -118,7 +129,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 
 
 ;; TODO add data to more than pages.
-(defmacro generate-pdf ((&key pre-table (show-page-numbers t) (file-path #P"~/common-lisp/school/mine.pdf")  (type :table) table-data table-title table-headings (table-cell-size 15) (table-padding 6)) &body body)
+(defmacro generate-pdf ((&key pre-table (show-page-numbers t) (file-path #P"~/common-lisp/school/mine.pdf")  (type :table) table-data table-title table-headings (table-cell-size 15) (table-padding 9)) &body body)
   "Every page must have the branding of the school, with logo, name, location and contacts,
    then content in the center, the template puts the branding onto the page,
    the file is passed as a file arg, and then the data to be put onto the page is passed as the body
@@ -133,7 +144,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 
   see test-table and test-simple-table on how to use the generate-pdf macro
    "
-  `(let* ((y-position 841)
+  `(let* ((y-position (aref *default-page-bounds* 3))
 	  (x-position 0)
 	  (cell-size ,table-cell-size)
 	  (cell-padding ,table-padding)
@@ -146,6 +157,8 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		(let* ((number-of-rows (get-row-heights rows))
 		       (x-start 0) 
 		       (y-start 0) ; the y-position at which table starts
+		       (page-width (aref *default-page-bounds* 2))
+		       (page-height (aref *default-page-bounds* 3))
 		       (x-end 0)
 		       (y-end 0)
 		       (x-max (apply #'+ dimensions-data))
@@ -156,15 +169,17 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		    (pdf:in-text-mode
 		      (pdf:set-font helvetica 20.0)
 		      (set-y-position (- y-position 20)) ; move the y-position 20 below the header line separator
-		      (pdf:draw-centered-text 300 y-position ,table-title helvetica 20.0)
+		      (pdf:draw-centered-text (/ page-width 2) y-position ,table-title helvetica 20.0)
 		      (set-y-position (- y-position 5)) ; move the y-position 5 below the title, this is the start of the table
 		      ))
 		  (setq y-start y-position)	      ; see line above
 		  
 		  
 		  ;; center the table, get any remaining space on x, substract the total, divide by 2
-		  (when (> 595 x-max)
-		    (setq x-start (/ (- 595 x-max) 2)))
+		  (print page-width)
+		  (print x-max)
+		  (when (> page-width x-max)
+		    (setq x-start (/ (- page-width x-max) 2)))
 		  (setq x-end (+ x-start x-max))
 		  (setq y-end (- y-start y-max))
 		  
@@ -233,7 +248,8 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		  (dolist (heading table-headings)
 		    (let ((pos (position heading table-headings :test #'equal)))
 		      ;; add the padding to get the total width of a row
-		      (setf (nth pos widths) (+ cell-padding (pdf::text-width heading helvetica 10.0)))))
+		      ;; the headings are 11 pixels
+		      (setf (nth pos widths) (+ cell-padding (pdf::text-width heading helvetica 11.0)))))
 		  (row-widths widths rows 0)))
 	      (row-widths (widths rows position)
 		"iterate throught the data setting position position to the largest"
@@ -268,12 +284,12 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 	      ;; 	    (pdf:draw-text (funcall accessor-function datum)))))
 	      (rows-on-front-page ()
 		"compute and return how many rows can be put on the front page, this will depend on the cell-size+padding
-		we start at 740, move down by 5, then again by cell-size+padding and leave cell-size+padding*2 at the end of the rows, for page numbers and stuff."
-		(floor (/ (- 740 5 (* cell-size+padding 3)) cell-size+padding)))
+		we start at (- page-height 101), move down by 5, then again by cell-size+padding and leave cell-size+padding*2 at the end of the rows, for page numbers and stuff."
+		(floor (/ (- (aref *default-page-bounds* 3) 101 5 (* cell-size+padding 3)) cell-size+padding)))
 	      (rows-per-page ()
 		"compute and return how many rows can be put on a normal page, this will depend on the cell-size+padding
-		we start at 841, leave some space up, cell-size+padding*2 and leave cell-size+padding*2 at the end of the rows, for page numbers and stuff."
-		(floor (/ (- 841 (* cell-size+padding 4)) cell-size+padding)))
+		we start at page-height, leave some space up, cell-size+padding*2 and leave cell-size+padding*2 at the end of the rows, for page numbers and stuff."
+		(floor (/ (- (aref *default-page-bounds* 3) (* cell-size+padding 4)) cell-size+padding)))
 	      (front-page-rows (rows number-of-rows &optional acc (height-acc 0))
 		"given a list of rows and the number of rows a frontpage can hold, return a cons (front-page-rows.other-rows)"
 		(if rows
@@ -379,14 +395,24 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 			(pdf:line-to x-end y-position)
 			(pdf:stroke))
 		      (incf pos))))))
-       (let ((dimensions-data (get-widths ,table-headings ,table-data)))
+       (let* ((dimensions-data (get-widths ,table-headings ,table-data))
+	      		       (x-max (apply #'+ dimensions-data)))
 	 (pdf:with-document ()
+	   ;; since x-max has already been computed, find if the data can fit on a4 portrait width, then a4 landscape, then try a3 then a2.
+	   (cond ((< x-max 595) (setq *default-page-bounds* *a4-portrait-page-bounds*)) 
+		 ((< x-max 842) (setq *default-page-bounds* *a3-portrait-page-bounds*))
+		 ((< x-max 1191) (setq *default-page-bounds* *a2-portrait-page-bounds*)))
+	   (set-y-position (aref *default-page-bounds* 3))
+	   (print *default-page-bounds*)
 	   (if (equal ,type :table)
 	       ;; iterate over all the data provided
 	       (let* ((frontpage-and-other-rows (front-page-rows ,table-data (rows-on-front-page)))
 		      (frontpage-rows (car frontpage-and-other-rows))
 		      (other-rows (cdr frontpage-and-other-rows))
-		      (other-page-rows (other-page-rows other-rows (rows-per-page))))
+		      (other-page-rows (other-page-rows other-rows (rows-per-page)))
+		      (page-width (aref *default-page-bounds* 2))
+		      (page-height (aref *default-page-bounds* 3))
+		      (page-middle (/ page-width 2)))
 		 ;; put data on frontpage
 		 (pdf:with-page ()
 		   (pdf:with-outline-level ("Example" (pdf:register-page-reference))
@@ -396,20 +422,26 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 			    (email (cadr (assoc "email" school-details :test #'string-equal)))
 			    (phone-number (cadr (assoc "phone_number" school-details :test #'string-equal)))
 			    (location (cadr (assoc "location" school-details :test #'string-equal)))
-			    (logo (make-jpeg-image *logo-path*))
+			    (logo (make-jpeg-image (cadr (assoc "logo" school-details :test #'string-equal))))
 			    )
 		       (pdf:add-images-to-page logo)
-		       (pdf:draw-image logo 10 750 70 200 0 t)
+		       ;; the logo is 91px long
+		       (set-y-position (- y-position 75))
+		       (pdf:draw-image logo 10 y-position 70 200 0 t)
+		       (set-y-position (- page-height 41))
 		       (pdf:in-text-mode
-			 (pdf:move-text 100 800)
-			 (pdf:draw-centered-text 300 800 school-name helvetica 18.0)
-			 (pdf:draw-centered-text 300 785 location helvetica 15.0)
-			 (pdf:draw-centered-text 300 775 (format nil "P.O.Box ~a. Email: ~a. Telephone: ~a" pobox email phone-number) helvetica 10.0)
+			 (pdf:move-text 100 y-position)
+			 (pdf:draw-centered-text page-middle y-position school-name helvetica 18.0)
+			 (set-y-position (- y-position 15))
+			 (pdf:draw-centered-text page-middle y-position location helvetica 15.0)
+			 (set-y-position (- y-position 10))
+			 (pdf:draw-centered-text page-middle y-position (format nil "P.O.Box ~a. Email: ~a. Telephone: ~a" pobox email phone-number) helvetica 10.0)
 			 (pdf:set-font helvetica 20.0)
-			 (pdf:move-text 595 740)
-			 (pdf:polyline '((0 740) (595 740))) ; these are the default a4 sizes #(0 0 595 841)
-			 (pdf:stroke)
-			 (set-y-position 740))
+			 (set-y-position (- y-position 15))
+			 (pdf:move-text page-width y-position)
+			 (print page-width)
+			 (pdf:polyline (list (list 0 y-position) (list page-width y-position))) ; these are the default a4 sizes #(0 0 595 841)
+			 (pdf:stroke))
 		       ,@pre-table
 		       (draw-table frontpage-rows dimensions-data)
 		       (when ,show-page-numbers
@@ -419,7 +451,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		 ;; add all other data that is not on the first page
 		 (let ((page-count 2))
 		   (dolist (rows other-page-rows)
-		     (set-y-position (- 841 (* 2 cell-size+padding)))
+		     (set-y-position (- page-height (* 2 cell-size+padding)))
 		     (pdf:with-page ()
 		       (pdf:with-outline-level ("Example" (pdf:register-page-reference))
 			 (draw-table rows dimensions-data :other-page t))
@@ -453,3 +485,9 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		  :table-title "Levels"
 		  :table-headings '("class" "stream" "subject" "papers")
 		  :table-data '(("s6" ("sciences" "arts") (("maths" "chemostry" "biology")) (("1" "2") ("1" "2" "3") ("1" "2" "3")))))))
+
+(defun test-long-table ()
+  (generate-pdf  (:file-path #p"~/common-lisp/school/long-table.pdf"
+		  :table-title "Levels"
+		  :table-headings '("class" "stream" "subject" "papers")
+		  :table-data '(("ooooooooooooooooooooooooooooooooooooo" "ooooooooooooooooooooooooooooooooooooo" "ooooooooooooooooooooooooooooooooooooo" "ooooooooooooooooooooooooooooooooooooo")))))

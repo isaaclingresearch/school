@@ -1,8 +1,9 @@
+
 (defpackage :school.teacher
-  (:use :cl :sqlite :ltk :cl-pdf :str :school.ltk :school :tktable :jonathan)
+  (:use :cl :sqlite :ltk :cl-pdf :str :school.ltk :school.pdf :school :tktable :jonathan)
   (:shadow cl-pdf:image cl-pdf:make-image cl-pdf:font-metrics cl-pdf:bbox cl-pdf:name cl-pdf:scale str:repeat)
   (:export :start))
-,
+
 (in-package :school.teacher)
 
 (defparameter *main-frame* nil)		
@@ -96,12 +97,40 @@
     (department-menu departments)
     ))
 
+(defun process-teacher-info-for-pdf ()
+  "make teacher info ready for export"
+  (let ((teacher-info (get-teacher-info)))
+    (mapcar (lambda (i)
+	      (list (write-to-string (nth 0 i))
+		    (format nil "~a ~a" (nth 2 i) (nth 1 i))
+		     (nth 8 i)
+		    (nth 3 i)
+		    (format nil "~a/~a" (nth 4 i) (nth 5 i))
+		    (format nil "~a/~a" (nth 6 i) (nth 7 i))
+		    (nth 9 i)
+		    (write-to-string (nth 10 i))
+		    (nth 11 i)
+		    (let (acc)
+		      (dolist (level&subjects (parse (nth 14 i)))
+			(setq acc `(,@acc ,(format nil "~a: ~{ ~a ~}" (car level&subjects) (cadr level&subjects)))))
+		      acc))) teacher-info)))
+
 (defun teacher-menu (menu)
   "add menu buttons to new teacher menu"
   (make-instance 'menubutton :master menu :text "New Teacher" :command (lambda () (new-teacher-form)))
   (make-instance 'menubutton :master menu :text "Edit Teachers" :command (lambda () (edit-teacher-info)))
   (make-instance 'menubutton :master menu :text "Show Teachers" :command (lambda () (show-teacher-info)))
-  (make-instance 'menubutton :master menu :text "Print Teacher Info" :command (lambda () (new-teacher-form)))
+  (make-instance 'menubutton :master menu :text "Print Teacher Info"
+			     :command (lambda ()
+					(let ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf")))))
+					  (unless (equal "" pdf-path)
+					    (generate-pdf (:file-path pdf-path
+							   :table-title "Levels"
+							   :table-headings '("Id" "Name" "Sex" "Birthday" "Emails" "Phone numberssssssssssssss" "Marital status" "Children" "Residence" "Subjects taught")
+							   :table-data (process-teacher-info-for-pdf)))
+					    (make-response "The teacher information has been exported to pdf")
+					    ))
+					))
   )
 
 (defun department-menu (menu)

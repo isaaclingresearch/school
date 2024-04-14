@@ -14,7 +14,7 @@
 	       (:file "school.ltk")
 	       (:file "tktable")
 	       (:file "school.pdf")
-	       (:file "school.info" :depends-on ("school.ltk" "school.pdf"))
+	       (:file "school.info")
 	       (:file "school.teacher")
 	       )
   :build-operation "program-op" ;; leave as is
