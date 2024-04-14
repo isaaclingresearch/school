@@ -2,7 +2,7 @@
   (:use :cl :sqlite :ltk :cl-pdf :str :school.ltk :school :tktable :jonathan)
   (:shadow cl-pdf:image cl-pdf:make-image cl-pdf:font-metrics cl-pdf:bbox cl-pdf:name cl-pdf:scale str:repeat)
   (:export :start))
-
+,
 (in-package :school.teacher)
 
 (defparameter *main-frame* nil)		
@@ -10,9 +10,9 @@
 (defparameter *menubar* nil)
 
 (defun create-tables (database)
-  ;; subjects are a json array.
-  (execute-non-query database "create table department_info (id integer primary key, name text, level text, subjects text, added_on default current_timestamp)")
-  (execute-non-query database "create table teacher_info (id integer primary key, surname text, firstname text, date_of_birth text, email text unique, school_email text unique, tel_no1 text unique, tel_no2 text, sex text, marital_status text, number_of_children integer, subject_1 text, subject_2 text, subject_3 text, subject_4 text, teacher_code text unique, residence text, cv text, added_on default current_timestamp)"))
+  ;; subjects are a json array in both department_info and teacher_info
+  (execute-non-query database "create table teacher_info (id integer primary key, surname text, firstname text, date_of_birth text, email text unique, school_email text unique, tel_no1 text unique, tel_no2 text, sex text, marital_status text, number_of_children integer, teacher_code text unique, residence text, cv text, level_and_subjects text, added_on default current_timestamp)")
+    (execute-non-query database "create table department_info (id integer primary key, name text, level text, subjects text, added_on default current_timestamp)"))
 
 (defun create-or-edit-department (name level subjects &optional id)
   "create a department"
@@ -27,12 +27,12 @@
 	    (execute-to-list db "select * from department_info where id = ?" id)
 	    (execute-to-list db "select * from department_info"))))
 
-(defun create-or-edit-teacher (surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children subject1 subject2 subject3 subject4 teacher-code residence cv &optional id added-on)
+(defun create-or-edit-teacher (surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children teacher-code residence cv levels-and-subjects &optional id)
   "function to save or edit teacher data"
   (conn
     (if id
-	(execute-non-query db "update teacher_info set surname = ?, firstname = ?, date_of_birth = ?, email = ?, school_email = ?, tel_no1 = ?, tel_no2 = ?, sex = ?, marital_status = ?, number_of_children = ?, subject_1 = ?, subject_2 = ?, subject_3 = ?, subject_4 = ?, teacher_code = ?, residence = ?, cv = ?, added_on = ? where id = ?"surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children subject1 subject2 subject3 subject4 teacher-code residence cv added-on id)
-	(execute-non-query db "insert into teacher_info (surname, firstname, date_of_birth, email, school_email, tel_no1, tel_no2, sex, marital_status, number_of_children, subject_1, subject_2, subject_3, subject_4, teacher_code, residence, cv) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children subject1 subject2 subject3 subject4 teacher-code residence cv))))
+	(execute-non-query db "update teacher_info set surname = ?, firstname = ?, date_of_birth = ?, email = ?, school_email = ?, tel_no1 = ?, tel_no2 = ?, sex = ?, marital_status = ?, number_of_children = ?, teacher_code = ?, residence = ?, cv = ?, level_and_subjects = ? where id = ?"surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children teacher-code residence cv levels-and-subjects id)
+	(execute-non-query db "insert into teacher_info (surname, firstname, date_of_birth, email, school_email, tel_no1, tel_no2, sex, marital_status, number_of_children, teacher_code, residence, cv, level_and_subjects) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" surname given-name date-of-birth email school-email tel-no1 tel-no2 sex marital-status number-of-children teacher-code residence cv levels-and-subjects))))
 
 (defun get-teacher-info (&optional id)
   "select teacher id, return all values or one corresponding to the given id"
@@ -99,7 +99,8 @@
 (defun teacher-menu (menu)
   "add menu buttons to new teacher menu"
   (make-instance 'menubutton :master menu :text "New Teacher" :command (lambda () (new-teacher-form)))
-  (make-instance 'menubutton :master menu :text "Show/Edit Teachers" :command (lambda () (show/edit-teacher-info)))
+  (make-instance 'menubutton :master menu :text "Edit Teachers" :command (lambda () (edit-teacher-info)))
+  (make-instance 'menubutton :master menu :text "Show Teachers" :command (lambda () (show-teacher-info)))
   (make-instance 'menubutton :master menu :text "Print Teacher Info" :command (lambda () (new-teacher-form)))
   )
 
@@ -110,7 +111,7 @@
     (dolist (department (get-department-info))
       (make-instance 'menubutton :master edit-menu :text (format nil "~a - ~a" (third department) (second department))
 				 :command (lambda () (select-department-subjects (second department) (third department) (parse (fourth department)) (car department))))))
-  (make-instance 'menubutton :master menu :text "Show department" :command (lambda ())))
+  (make-instance 'menubutton :master menu :text "Show department" :command (lambda () (show-departments))))
 
 (defun new-department-form (&optional department-id)
   "display a form to create or edit a department's details"
@@ -118,7 +119,7 @@
   (unless (null  *main-frame*)
     (ltk:destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
-   (prepare-main-frame)
+  (prepare-main-frame)
   (wm-title *tk* "Create or Edit Department")
   (let* ((name-entry (make-instance 'entry :master *main-frame*))
 	 (levels (mapcar #'second (school.info:|get-level|)))
@@ -147,12 +148,12 @@
 	 selected-subjects
 	 (level-subjects (school.info::get-level-subjects level-id)) 
 	 (save-button (make-instance 'button :master *main-frame* :text "Save department"
-				     :command (lambda ()
-						(dolist (subject-check-button subject-check-buttons)
-						  (if (value subject-check-button)
-						      (setq selected-subjects (append selected-subjects (list (text subject-check-button))))))
-						(create-or-edit-department (text name-entry) (text level-entry) (to-json selected-subjects) id)
-						(make-response "The new department has been saved.")))))
+					     :command (lambda ()
+							(dolist (subject-check-button subject-check-buttons)
+							  (if (value subject-check-button)
+							      (setq selected-subjects (append selected-subjects (list (text subject-check-button))))))
+							(create-or-edit-department (text name-entry) (text level-entry) (to-json selected-subjects) id)
+							(make-response "The new department has been saved.")))))
     (grid (make-instance 'label :master *main-frame* :text "Name of department") 0 0)
     (grid name-entry 0 1 :pady 2)
     (grid (make-instance 'label :master *main-frame* :text "Level") 1 0)
@@ -169,6 +170,19 @@
 	  (incf pos))))
     (grid save-button pos 1)))
 
+(defun show-departments ()
+  "show departments in a table."
+  (unless (null *main-frame*)
+    (ltk:destroy *main-frame*))
+  (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  (prepare-main-frame)
+  (wm-title *tk* "Departments information")
+  (let* ((info (mapcar (lambda (i) (list (second i) (third i) (format nil "~{ ~a~} ~% newline" (parse (fourth i))))) (get-department-info)))
+	 (info-table (make-instance 'scrolled-table :titlerows 1 :master *main-frame*
+						    :data (cons (list "Name" "Level" "Subjects") info))))
+    (pack info-table :side :top :fill :both :expand t)
+    (grid *main-frame* 0 0 :sticky "nsew")))
+
 (defun new-teacher-form (&optional teacher-id)
   "display form to get new teacher details"
   (unless (null *main-frame*)
@@ -179,7 +193,11 @@
     (flet ((get-info-value (pos &optional default)
 	     (let ((val (nth pos teacher-info)))
 	       (if val val default))))
-      (let* ((title (make-instance 'label :master *main-frame* :text "Enter the details of the teacher."))
+      (let* (selected-levels
+	     displayed-levels
+	     (levels (mapcar #'second (school.info:|get-level|)))
+	     (pos 0)
+	     (title (make-instance 'label :master *main-frame* :text "Enter the details of the teacher."))
 	     (surname-entry (make-instance 'entry :master *main-frame* :text (get-info-value 1))) ; note that 0 is occupied by id
 	     (given-name-entry (make-instance 'entry :master *main-frame* :text (get-info-value 2)))
 	     (date-of-birth-entry (make-instance 'entry :master *main-frame* :text (get-info-value 3)))
@@ -190,14 +208,10 @@
 	     (sex-entry (make-instance 'entry :master *main-frame* :text (get-info-value 8)))
 	     (marital-status-entry (make-instance 'entry :master *main-frame* :text (get-info-value 9)))
 	     (number-of-children-entry (make-instance 'entry :master *main-frame* :text (get-info-value 10)))
-	     (subject-1-entry (make-instance 'entry :master *main-frame* :text (get-info-value 11)))
-	     (subject-2-entry (make-instance 'entry :master *main-frame* :text (get-info-value 12)))
-	     (subject-3-entry (make-instance 'entry :master *main-frame* :text (get-info-value 13)))
-	     (subject-4-entry (make-instance 'entry :master *main-frame* :text (get-info-value 14)))
 	     (residence-entry (make-instance 'entry :master *main-frame* :text (get-info-value 15)))
 	     (teacher-code-entry (make-instance 'entry :master *main-frame* :text (get-info-value 16)))
 	     (cv-entry (make-instance 'entry :master *main-frame* :text (get-info-value 17)))
-	     (button (make-instance 'button :master *main-frame* :text "Save New Teacher"
+	     (button (make-instance 'button :master *main-frame* :text "Next"
 					    :command (lambda ()
 						       (let ((surname (text surname-entry))
 							     (given-name (text given-name-entry))
@@ -209,17 +223,109 @@
 							     (sex (text sex-entry))
 							     (marital-status (text marital-status-entry))
 							     (number-of-children (text number-of-children-entry))
-							     (subject-1 (text subject-1-entry))
-							     (subject-2 (text subject-2-entry))
-							     (subject-3 (text subject-3-entry))
-							     (subject-4 (text subject-4-entry))
 							     (residence (text residence-entry))
 							     (teacher-code (text teacher-code-entry))
 							     (cv (text cv-entry))
 							     )
-							 (print school-email)
+							 (dolist (cb displayed-levels)
+							   (if (value cb)
+							       (setq selected-levels `(,@selected-levels ,(text cb)))))
+							 (print selected-levels)
+							 (new-teacher-subjects-form :surname surname :given-name given-name :date-of-birth date-of-birth :email email :school-email school-email :phone-number-1 phone-number-1 :phone-number-2 phone-number-2 :sex sex :marital-status marital-status :number-of-children number-of-children :residence residence :teacher-code teacher-code :cv cv :selected-levels-f selected-levels)
+							 ))))
+	     )
+	(center-main-frame)
+	(grid title 0 0)
+	(grid (make-instance 'label :master *main-frame* :text "Surname") 1 0)
+	(grid surname-entry 1 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Given Name") 2 0)
+	(grid given-name-entry 2 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Birthday") 3 0)
+	(grid date-of-birth-entry 3 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Email") 4 0)
+	(grid email-entry 4 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "School Email") 5 0)
+	(grid school-email-entry 5 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Phone number 1") 6 0)
+	(grid phone-number-1-entry 6 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Phone number 2") 7 0)
+	(grid phone-number-2-entry 7 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Sex") 8 0)
+	(grid sex-entry 8 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Marital status") 9 0)
+	(grid marital-status-entry 9 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Number of children") 10 0)
+	(grid number-of-children-entry 10 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Residence") 11 0)
+	(grid residence-entry 11 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Teacher code") 12 0)
+	(grid teacher-code-entry 12 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "CV") 13 0)
+	(grid cv-entry 13 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Select all levels the teacher teaches.") 14 0)
+	(setq pos 15)
+	(dolist (level levels)
+	  (let ((cb (make-instance 'check-button :master *main-frame* :text level)))
+	    (setq displayed-levels `(,@displayed-levels ,cb))
+	    (grid cb pos 0)
+	    (incf pos)))
+	(grid button pos 1 :pady 3)
+	))))
+
+(defun new-teacher-subjects-form (&key surname given-name date-of-birth email school-email phone-number-1 phone-number-2 sex marital-status number-of-children residence teacher-code cv selected-levels-f teacher-id)
+  "display form to get new teacher details"
+  (unless (null *main-frame*)
+    (ltk:destroy *main-frame*))
+  (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  (wm-title *tk* "Add a new teacher")
+  (let ((teacher-info (if teacher-id ; if teacher-id is supplied, use it, else, use the data supplied
+			  (car (get-teacher-info teacher-id))
+			  (list 0 surname given-name date-of-birth email school-email phone-number-1 phone-number-2 sex marital-status number-of-children residence teacher-code cv selected-levels-f))))
+    (flet ((get-info-value (pos &optional default)
+	     (let ((val (nth pos teacher-info)))
+	       (if val val default))))
+      (let* (levels&subjects-list
+	     selected-levels&subjects	     
+	     (pos 0)
+	     (title (make-instance 'label :master *main-frame* :text "Enter the details of the teacher."))
+	     (surname-entry (make-instance 'entry :master *main-frame* :text (get-info-value 1))) ; note that 0 is occupied by id
+	     (given-name-entry (make-instance 'entry :master *main-frame* :text (get-info-value 2)))
+	     (date-of-birth-entry (make-instance 'entry :master *main-frame* :text (get-info-value 3)))
+	     (email-entry (make-instance 'entry :master *main-frame* :text (get-info-value 4)))
+	     (school-email-entry (make-instance 'entry :master *main-frame* :text (get-info-value 5)))
+	     (phone-number-1-entry (make-instance 'entry :master *main-frame* :text (get-info-value 6)))
+	     (phone-number-2-entry (make-instance 'entry :master *main-frame* :text (get-info-value 7)))
+	     (sex-entry (make-instance 'entry :master *main-frame* :text (get-info-value 8)))
+	     (marital-status-entry (make-instance 'entry :master *main-frame* :text (get-info-value 9)))
+	     (number-of-children-entry (make-instance 'entry :master *main-frame* :text (get-info-value 10)))
+	     (residence-entry (make-instance 'entry :master *main-frame* :text (get-info-value 11)))
+	     (teacher-code-entry (make-instance 'entry :master *main-frame* :text (get-info-value 12)))
+	     (cv-entry (make-instance 'entry :master *main-frame* :text (get-info-value 13)))
+	     (button (make-instance 'button :master *main-frame* :text "Next"
+					    :command (lambda ()
+						       (let ((surname (text surname-entry))
+							     (given-name (text given-name-entry))
+							     (date-of-birth (text date-of-birth-entry))
+							     (email (text email-entry))
+							     (school-email (text school-email-entry))
+							     (phone-number-1 (text phone-number-1-entry))
+							     (phone-number-2 (text phone-number-2-entry))
+							     (sex (text sex-entry))
+							     (marital-status (text marital-status-entry))
+							     (number-of-children (text number-of-children-entry))
+							     (residence (text residence-entry))
+							     (teacher-code (text teacher-code-entry))
+							     (cv (text cv-entry))
+							     )
+							 (dolist (level&subjects levels&subjects-list)
+							   (let (acc)
+							     (dolist (subject (cadr level&subjects))
+							       (when (value subject)
+								 (setq acc `(,@acc ,(text subject)))))
+							     (setq selected-levels&subjects `(,@selected-levels&subjects (,(car level&subjects) ,acc)))))
+							 (print selected-levels&subjects)
 							 (create-or-edit-teacher surname given-name date-of-birth email school-email phone-number-1 phone-number-2 sex marital-status
-										 number-of-children subject-1 subject-2 subject-3 subject-4 teacher-code residence cv)
+										 number-of-children teacher-code residence cv (to-json selected-levels&subjects) teacher-id)
 							 (make-response "A new teacher has been added.")
 							 ))))
 	     )
@@ -245,64 +351,120 @@
 	(grid marital-status-entry 9 1 :pady 2)
 	(grid (make-instance 'label :master *main-frame* :text "Number of children") 10 0)
 	(grid number-of-children-entry 10 1 :pady 2)
-	(grid (make-instance 'label :master *main-frame* :text "Subject 1") 11 0)
-	(grid subject-1-entry 11 1 :pady 2)
-	(grid (make-instance 'label :master *main-frame* :text "Subject 2") 12 0)
-	(grid subject-2-entry 12 1 :pady 2)
-	(grid (make-instance 'label :master *main-frame* :text "Subject 3") 13 0)
-	(grid subject-3-entry 13 1 :pady 2)
-	(grid (make-instance 'label :master *main-frame* :text "Subject 4") 14 0)
-	(grid subject-4-entry 14 1 :pady 2)
-	(grid (make-instance 'label :master *main-frame* :text "Residence") 15 0)
-	(grid residence-entry 15 1 :pady 2)
-	(grid (make-instance 'label :master *main-frame* :text "Teacher code") 16 0)
-	(grid teacher-code-entry 16 1 :pady 2)
-	(grid (make-instance 'label :master *main-frame* :text "CV") 17 0)
-	(grid cv-entry 17 1 :pady 2)
-	(grid button 18 1 :pady 3)
+	(grid (make-instance 'label :master *main-frame* :text "Residence") 11 0)
+	(grid residence-entry 11 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Teacher code") 12 0)
+	(grid teacher-code-entry 12 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "CV") 13 0)
+	(grid cv-entry 13 1 :pady 2)
+	(grid (make-instance 'label :master *main-frame* :text "Select all subjects the teacher teachers under each level.") 14 0)
+	(setq pos 15)
+	;; get all levels in a school, display their subjects as checkbuttons while selecting those that were saved.
+	(if teacher-id
+	    (dolist (level (school.info::|get-level|))
+	      (grid (make-instance 'label :master *main-frame* :text (cadr level)) pos 0)
+	      (incf pos)
+	      (let* (acc
+		     (saved-levels&subjects (parse (nth 14 teacher-info)))
+		     (saved-level-subjects (cadr (find (cadr level) saved-levels&subjects :key #'car :test #'equal))))
+		(dolist (subject (school.info::get-level-subjects (car level)))
+		  (let ((cb (make-instance 'check-button :master *main-frame* :text subject)))
+		    (when (member subject saved-level-subjects :test #'equal) ; if the subject is in the saved subjects list, select it
+		      (format-wish "~a invoke" (widget-path cb)))
+		    (setq acc `(,@acc ,cb))
+		    (grid cb pos 0)
+		    (incf pos)))
+		(setq levels&subjects-list `(,@levels&subjects-list (,(cadr level) ,acc)))))
+	    (dolist (level selected-levels-f)
+	      (let ((level-id (school.info::|get-level-id| level)))
+		(grid (make-instance 'label :master *main-frame* :text level) pos 0)
+		(incf pos)
+		(let (acc)
+		  (dolist (subject (school.info::get-level-subjects level-id))
+		    (let ((cb (make-instance 'check-button :master *main-frame* :text subject)))
+		      (setq acc `(,@acc ,cb))
+		      (grid cb pos 0)
+		      (incf pos)))
+		  (setq levels&subjects-list `(,@levels&subjects-list (,level ,acc))))))
+	    )
+	(grid button pos 1 :pady 3)
 	))))
-
 
 (defun tabletest ()
   (with-ltk ()
     (let ((sctable (make-instance 'scrolled-table
-				:titlerows 1
-				:titlecols 1
-				:data
-				(cons (cons "*" (loop for c from 1 to 40 collect
-						   c))
-				      (loop for r from 1 to 200
-					 collect
-					   (cons r
-						 (loop for c from 1 to 40 collect
-						      (* r c))))))))
+				  :titlerows 1
+				  :titlecols 1
+				  :data
+				  (cons (cons "*" (loop for c from 1 to 40 collect
+							c))
+					(loop for r from 1 to 200
+					      collect
+					      (cons r
+						    (loop for c from 1 to 40 collect
+									     (* r c))))))))
       (pack sctable :side :top :fill :both :expand t)
       (format t "7 * 8 is ~a~%" (car (subvals (table sctable) 7 8)))
       (finish-output))))
 
-(defun show/edit-teacher-info ()
+(defun show-teacher-info ()
   "display all teacher information in a table"
   (unless (null *main-frame*)
     (ltk:destroy *main-frame*))
   (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
   (prepare-main-frame)
   (wm-title *tk* "Teacher Information Table")
-  (let* ((titles '("Id" "Surname" "First name" "Date of birth" "Email" "School Email" "Telephone 1" "Telephone 2" "Sex" "Marital Status" "Children"
-		   "Subject 1" "Subject 2" "Subject 3" "Subject 4" "Residence" "Code" "CV" "Added on"))
-	 (len (length titles))
-	 (teacher-info (get-teacher-info))
-	 (info-table (make-instance 'scrolled-table :titlerows 1 :master *main-frame*
-						    :data (cons titles teacher-info)
-						    )))
-    (pack info-table :side :top :fill :both :expand t)
-    (grid *main-frame* 0 0 :sticky "nsew")
-    (pack (make-instance 'button :master *main-frame* :text "Save"
-				 :command (lambda () (let ((acc (group-to-rows (vals (table info-table)) len)))
-						       (dolist (teacher (cdr acc)) ; remove the titles from the data as car
-							 (eval `(create-or-edit-teacher ,@(butlast (cdr teacher)) ,(car teacher) ,@(last teacher))))
-						       (message-box "The teacher information has been updated." "Operation succesful." "ok" "info")
-						       )))
-	  :after info-table)))
+  (flet ((process-teacher-info (info)
+	   "convert all json data in level_and_subjects to readable string data, with each level and its subjects on a new line)"
+	   (print (nth 14 info))
+	   (list (nth 0 info)
+		 (nth 1 info)
+		 (nth 2 info)
+		 (nth 3 info)
+		 (nth 4 info)
+		 (nth 5 info)
+		 (nth 6 info)
+		 (nth 7 info)
+		 (nth 8 info)
+		 (nth 9 info)
+		 (nth 10 info)
+		 (nth 11 info)
+		 (nth 12 info)
+		 (nth 13 info)
+		 (let ((subject-data (parse (nth 14 info))))
+		   (format nil "~{~a:~{ ~a~}~} ~{~%~{~a:~{ ~a~} ~}~}" (car subject-data) (cdr subject-data)))
+		 (nth 15 info))))
+    (let* ((titles '("Id" "Surname" "First name" "Date of birth" "Email" "School Email" "Telephone 1" "Telephone 2" "Sex" "Marital Status" "Children"
+		     "Residence" "Code" "CV" "Levels and Subjects" "Added on"))
+	   (len (length titles))
+	   (teacher-info (mapcar #'process-teacher-info (get-teacher-info)))
+	   (info-table (make-instance 'scrolled-table :titlerows 1 :master *main-frame*
+						      :data (cons titles teacher-info)
+						      )))
+      (pack info-table :side :top :fill :both :expand t)
+      (grid *main-frame* 0 0 :sticky "nsew"))))
+
+
+(defun edit-teacher-info ()
+  "display some teacher information with an edit button"
+  (unless (null *main-frame*)
+    (ltk:destroy *main-frame*))
+  (setq *main-frame* (make-instance 'frame :borderwidth 5 :relief :ridge))
+  (prepare-main-frame)
+  (wm-title *tk* "Edit teacher info")
+  (let* ((pos 1)
+	 (teacher-info (mapcar (lambda (i) (list (nth 0 i) (format nil "~a ~a" (nth 1 i) (nth 2 i)) (nth 4 i))) (get-teacher-info))))
+    (grid (make-instance 'label :master *main-frame* :text "Id") 0 0)
+    (grid (make-instance 'label :master *main-frame* :text "Fullname") 0 1)
+    (grid (make-instance 'label :master *main-frame* :text "Email") 0 2)
+    (grid (make-instance 'label :master *main-frame* :text "Edit") 0 3)
+    (dolist (i teacher-info)
+      (let ((local-pos 0))
+	(dolist (x i)
+	  (grid (make-instance 'label :master *main-frame* :text x) pos local-pos)
+	  (incf local-pos))
+	(grid (make-instance 'button :master *main-frame* :text "Edit" :command (lambda () (new-teacher-subjects-form :teacher-id (car i)))) pos local-pos))
+      (incf pos))))
 
 (defun group-to-rows (lst x)
   "Groups a list into sublists containing X elements each."
