@@ -158,7 +158,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		       (x-start 0) 
 		       (y-start 0) ; the y-position at which table starts
 		       (page-width (aref *default-page-bounds* 2))
-		       (page-height (aref *default-page-bounds* 3))
+		;       (page-height (aref *default-page-bounds* 3))
 		       (x-end 0)
 		       (y-end 0)
 		       (x-max (apply #'+ dimensions-data))
@@ -176,8 +176,6 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		  
 		  
 		  ;; center the table, get any remaining space on x, substract the total, divide by 2
-		  (print page-width)
-		  (print x-max)
 		  (when (> page-width x-max)
 		    (setq x-start (/ (- page-width x-max) 2)))
 		  (setq x-end (+ x-start x-max))
@@ -403,7 +401,6 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		 ((< x-max 842) (setq *default-page-bounds* *a3-portrait-page-bounds*))
 		 ((< x-max 1191) (setq *default-page-bounds* *a2-portrait-page-bounds*)))
 	   (set-y-position (aref *default-page-bounds* 3))
-	   (print *default-page-bounds*)
 	   (if (equal ,type :table)
 	       ;; iterate over all the data provided
 	       (let* ((frontpage-and-other-rows (front-page-rows ,table-data (rows-on-front-page)))
@@ -439,7 +436,6 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 			 (pdf:set-font helvetica 20.0)
 			 (set-y-position (- y-position 15))
 			 (pdf:move-text page-width y-position)
-			 (print page-width)
 			 (pdf:polyline (list (list 0 y-position) (list page-width y-position))) ; these are the default a4 sizes #(0 0 595 841)
 			 (pdf:stroke))
 		       ,@pre-table

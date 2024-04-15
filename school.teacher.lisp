@@ -126,12 +126,31 @@
 					  (unless (equal "" pdf-path)
 					    (generate-pdf (:file-path pdf-path
 							   :table-title "Levels"
-							   :table-headings '("Id" "Name" "Sex" "Birthday" "Emails" "Phone numberssssssssssssss" "Marital status" "Children" "Residence" "Subjects taught")
+							   :table-headings '("Id" "Name" "Sex" "Birthday" "Emails" "Phone numbers" "Marital status" "Children" "Residence" "Subjects taught")
 							   :table-data (process-teacher-info-for-pdf)))
 					    (make-response "The teacher information has been exported to pdf")
 					    ))
 					))
   )
+
+(defun process-department-info-for-pdf ()
+  (let (acc
+	(department-info (get-department-info))
+	(teacher-info (get-teacher-info)))
+    (dolist (department department-info)
+      (setq acc `(,@acc ,(list (nth 1 department)
+			       (nth 2 department)
+			       (let (lacc (subjects (parse (nth 3 department))) (level (nth 2 department)))
+				 (dolist (subject subjects)
+				   (loop for teacher in teacher-info
+					 do (let* ((teacher-levels&subjects (parse (nth 14 teacher)))
+						   (this-level (find level teacher-levels&subjects :key #'car :test #'equal)))
+					      (when this-level
+						(when (member subject (cadr this-level) :test #'equal)
+						  (setq lacc `(,@lacc ,(format nil "~a ~a" (nth 2 teacher) (nth 1 teacher)))))))))
+				 (remove-duplicates lacc))
+			       (list (parse (nth 3 department)))))))
+    acc))
 
 (defun department-menu (menu)
   "add buttons to the department menu"
@@ -140,7 +159,19 @@
     (dolist (department (get-department-info))
       (make-instance 'menubutton :master edit-menu :text (format nil "~a - ~a" (third department) (second department))
 				 :command (lambda () (select-department-subjects (second department) (third department) (parse (fourth department)) (car department))))))
-  (make-instance 'menubutton :master menu :text "Show department" :command (lambda () (show-departments))))
+  (make-instance 'menubutton :master menu :text "Show department" :command (lambda () (show-departments)))
+  (make-instance 'menubutton :master menu :text "Export to PDF"
+			     :command (lambda ()
+					(let ((pdf-path (get-save-file :filetypes '(("PDF" ".pdf")))))
+					  (unless (equal "" pdf-path)
+					    (generate-pdf (:file-path pdf-path
+							   :table-title "Departments"
+							   :table-headings '("Name" "Level" "Teachers" "Subjects")
+							   :table-data (process-department-info-for-pdf)))
+					    (make-response "The department information has been exported to pdf")
+					    ))
+					))
+)
 
 (defun new-department-form (&optional department-id)
   "display a form to create or edit a department's details"
@@ -259,7 +290,6 @@
 							 (dolist (cb displayed-levels)
 							   (if (value cb)
 							       (setq selected-levels `(,@selected-levels ,(text cb)))))
-							 (print selected-levels)
 							 (new-teacher-subjects-form :surname surname :given-name given-name :date-of-birth date-of-birth :email email :school-email school-email :phone-number-1 phone-number-1 :phone-number-2 phone-number-2 :sex sex :marital-status marital-status :number-of-children number-of-children :residence residence :teacher-code teacher-code :cv cv :selected-levels-f selected-levels)
 							 ))))
 	     )
@@ -352,7 +382,6 @@
 							       (when (value subject)
 								 (setq acc `(,@acc ,(text subject)))))
 							     (setq selected-levels&subjects `(,@selected-levels&subjects (,(car level&subjects) ,acc)))))
-							 (print selected-levels&subjects)
 							 (create-or-edit-teacher surname given-name date-of-birth email school-email phone-number-1 phone-number-2 sex marital-status
 										 number-of-children teacher-code residence cv (to-json selected-levels&subjects) teacher-id)
 							 (make-response "A new teacher has been added.")
@@ -445,7 +474,6 @@
   (wm-title *tk* "Teacher Information Table")
   (flet ((process-teacher-info (info)
 	   "convert all json data in level_and_subjects to readable string data, with each level and its subjects on a new line)"
-	   (print (nth 14 info))
 	   (list (nth 0 info)
 		 (nth 1 info)
 		 (nth 2 info)
