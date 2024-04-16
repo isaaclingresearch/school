@@ -1,12 +1,12 @@
-(defpackage :school.pdf
-  (:use :cl :cl-pdf :school :sqlite)
-  (:export :generate-pdf :test-table :test-simple-table))
+p(defpackage :school.pdf
+   (:use :cl :cl-pdf :school :sqlite)
+   (:export :generate-pdf :test-table :test-simple-table))
 
 (in-package :school.pdf)
 
-(defvar *test-rows-1* '(("s6" ("sciences" "arts") (("maths" "chemistry" "biology")) (("1" "2") ("1" "2" "3") ("1" "2" "3")))))
-(defvar *test-rows* '(("s6" (("sciences" (("maths" ("1" "2")) ("chemistry" ("1" "2" "3")) ("biology" ("1" "2" "3"))))
-			     "arts"))))
+(defparameter *test-rows-1* '(("s6" ("sciences" "arts") (("maths" "chemistry" "biology")) (("1" "2") ("1" "2" "3") ("1" "2" "3")))))
+(defparameter *test-rows-with-array* '(("s6" ("sciences" "arts") (("maths" "chemistry" "biology")) (#("1" "2" "3") ("1" "2" "3") ("1" "2" "3")))))
+(defparameter *test-rows-with-array-1* '((#("s6" "s5") ("sciences" "arts") (("maths" "chemistry" "biology")) (#("1" "2" "3") ("1" "2" "3") ("1" "2" "3")))))
 
 (defvar *a2-portrait-page-bounds* #(0 0 1191 1684))
 (defvar *a2-landscape-page-bounds* #(0 0 1684 1191))
@@ -25,7 +25,7 @@ The table data is as such: all data is a list. Table data is a list of rows, eac
 A subcell can be a list of NON-LIST values or a string, consider the car of *test-rows* above s6 is a cell and so is (sciences arts) etc. sciences is 
 a subcell but so is (maths chemistry biology), if the a value inside a subcell has multiple values, those are presented as list of subcells in the next position,
 forexample: maths has multiple values (1 2) which are presented in the next cell as the first subcell because maths is the first sub-subcell, it will correspond to the
-first subcell in the next cell. if this is a bit confusing, look at *test-rows*
+first subcell in the next cell. if this is a bit confusing, look at *test-rows-1* and *test-rows-with-array*
 #|
 
 (defun replace-nil (list &optional (with 0))
@@ -35,21 +35,27 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
       with))
 
 (defun cell-heights (row &optional number-of-cells)
-  "when given a row, find the number of cells the row will occupy downward (height)"
+  "when given a row, find the number of cells the row will occupy downward (height)
+   arrays are used to get the represent values on different lines but within the same cell,
+   lists are used to represent subcells"
   (declare (ignore number-of-cells))
-  (if (listp row)
-      (mapcar (lambda (cell)
-		(if (listp cell)
-		    `(,(cell-heights (car cell)) ,@(cell-heights (cdr cell)))
-		    1))
-	      row)
-      1))
+  (cond ((listp row)
+	 (mapcar (lambda (cell)
+		   (cond ((listp cell)
+			  `(,(cell-heights (car cell)) ,@(cell-heights (cdr cell))))
+			 ((and (arrayp cell) (not (stringp cell))) (array-total-size cell))
+			 (t 1)))
+		 row))
+	((and (arrayp row) (not (stringp row))) (list (array-total-size row)))
+	(t 1)))
 
+;; this function assumed that the first element is always a one, which was true with lists but not with arrays
 (defun merge-cell-heights (heights)
   "collect all the heights in a cell in a single list."
-  (let* ((r-heights (reverse heights))
+  (let* ((r-heights (reverse (cdr heights)))
 	 (acc (list (car r-heights)))
-	 (current-data (car acc)))
+	 (current-data (car acc))
+	 (first (car heights)))
     (dolist (r-height (cdr r-heights))
       (if (listp r-height)
 	  (let (local-acc (local-pos 0))
@@ -72,12 +78,16 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 	    (setq acc (append (list local-acc) acc))
 	    (setq current-data local-acc))
 	  (setq acc (append (list current-data) acc))))
+    (if (equal 1 first)
+	(setq acc `(,(car acc) ,@acc))
+	(setq acc `(,(append (if (listp first) first (list first)) (car acc)) ,@acc)))
     acc))
 
 (defun reduce-subcell-heights (heights)
   "add subcell heights"
   (labels ((reduce-cell (cell)
 	     (cond ((equal 1 cell) 1)
+		  ; ((integerp cell) cell)
 		   ((summable-listp cell)
 		    (mapcar (lambda (data) (reduce #'+ data)) cell))
 		   ((not (summable-listp cell))
@@ -138,11 +148,11 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
    the default type is table, which means table data will be provided. you can present some data before the table with pre-table and after the table with body.
 
    local functions:
-   set-position sets the y-position of the page
-   draw-list displays a list of data on the page, takes data, an accessor function for each member of the list and spacing as (cons x-position y-spacing)
+   set-y-position sets the y-position of the page
+   set-x-position sets the x-position of the page
    draw-table displays data in a table, it is provided with with two args, a list of column headings and a list of lists of data, the function displays data separated by lines, the lines are placed at the end of the widest element in that column.
 
-  see test-table and test-simple-table on how to use the generate-pdf macro
+  see test functions below on how to use the generate-pdf macro
    "
   `(let* ((y-position (aref *default-page-bounds* 3))
 	  (x-position 0)
@@ -158,7 +168,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		       (x-start 0) 
 		       (y-start 0) ; the y-position at which table starts
 		       (page-width (aref *default-page-bounds* 2))
-		;       (page-height (aref *default-page-bounds* 3))
+					;       (page-height (aref *default-page-bounds* 3))
 		       (x-end 0)
 		       (y-end 0)
 		       (x-max (apply #'+ dimensions-data))
@@ -212,17 +222,23 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		  ;; set y to the upper border of the table
 		  (set-y-position (+ y-position cell-size+padding))
 		  ;; we use a closure because headings maybe duplicated, we can't go wrong while counting
-		  (let ((pos 0))
-		    (dolist (heading ,table-headings)
-		      (let* ((row-width (nth pos dimensions-data)))
-			(pdf:in-text-mode
-			  ;; \<-4-><-text-><-4-><-line->\
-			  ;; \<----------width--------->\
-			  ;; add the paddding ratios to put some space between the cell text and the separators
-			  (pdf:move-text (+ x-position 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
-			  (pdf:draw-text heading)
-			  (set-x-position (+ x-position row-width))
-			  (setq pos (+ 1 pos))))))
+		  (let ((local-y y-position))
+		    (loop for heading in ,table-headings and row-width in dimensions-data
+			  do (cond ((and (not (stringp heading)) (arrayp heading))
+				    (pdf:in-text-mode
+				      (loop for i from 0 below (array-total-size heading)
+					    do (pdf:move-text (+ x-position 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
+					       (pdf:draw-text (aref heading i))
+					       (set-y-position (- y-position cell-size+padding)))
+				      (set-x-position (+ x-position row-width))
+				      (set-y-position local-y)))
+				   (t (pdf:in-text-mode
+					;; \<-1/3-><-text-><-1/3-><-line- = 1/3>\
+					;; \<----------width------------------->\
+					;; add the paddding ratios to put some space between the cell text and the separators
+					(pdf:move-text (+ x-position 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
+					(pdf:draw-text heading)
+					(set-x-position (+ x-position row-width)))))))
 
 		  ;; data
 		  (pdf:set-font helvetica 10.0)
@@ -247,7 +263,15 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		    (let ((pos (position heading table-headings :test #'equal)))
 		      ;; add the padding to get the total width of a row
 		      ;; the headings are 11 pixels
-		      (setf (nth pos widths) (+ cell-padding (pdf::text-width heading helvetica 11.0)))))
+		      ;; if the heading is an array ie on multiple lines, find the longest of them all
+		      (if (and (arrayp heading) (not (stringp heading))) ; strings are arrays but not all arrays are strings
+			  (let ((local-width 0))
+			    (loop for i from 0 below (array-total-size heading)
+				  do (let ((l (+ cell-padding (pdf::text-width (aref heading i) helvetica 11.0))))
+				       (when (> l local-width)
+					 (setq local-width l))))
+			    (setf (nth pos widths) local-width))
+			  (setf (nth pos widths) (+ cell-padding (pdf::text-width heading helvetica 11.0))))))
 		  (row-widths widths rows 0)))
 	      (row-widths (widths rows position)
 		"iterate throught the data setting position position to the largest"
@@ -262,24 +286,25 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 			    (setf (nth position local-widths) cell-width))))
 		      (row-widths local-widths rows (+ 1 position)))))
 	      (cell-width (cell width)
-		"get the largest width of one or multiple cell items; add 12 (the padding and line size) to the text size to get the total"
-		(if (listp cell)
-		    (let ((local-width width))
-		      (dolist (cellum cell)
-			(let ((new-width (cell-width cellum local-width)))
-			  (if (> new-width local-width)
-			      (setq local-width new-width))))
-		      local-width)
-		    (let ((new-width (+ cell-padding (pdf::text-width cell helvetica 10.0))))
-		      (if (> new-width width)
-			  new-width
-			  width))))
-	      ;; (draw-list (list-data accessor-function spacing)
-	      ;; 	(pdf:in-text-mode
-	      ;; 	  (dolist (datum list-data)
-	      ;; 	    (set-y-position (- y-position (cdr spacing)))
-	      ;; 	    (pdf:move-text (car spacing) y-position)
-	      ;; 	    (pdf:draw-text (funcall accessor-function datum)))))
+		"get the largest width of one or multiple cell items; add cell-padding to the text size to get the total
+                 if a cell is an array, iterate through all of the elements to find the longest one"
+		(cond ((listp cell) (let ((local-width width))
+				      (dolist (cellum cell)
+					(let ((new-width (cell-width cellum local-width)))
+					  (if (> new-width local-width)
+					      (setq local-width new-width))))
+				      local-width))
+		      (t (cond ((and (arrayp cell) (not (stringp cell)))
+				(let ((lw 0))
+				  (loop for i from 0 below (array-total-size cell)
+					do (let ((cell-width (+ cell-padding (pdf::text-width (aref cell i) helvetica 10.0))))
+					     (if (> cell-width lw)
+						 (setq lw cell-width))))
+				  lw))
+			       (t (let ((new-width (+ cell-padding (pdf::text-width cell helvetica 10.0))))
+				    (if (> new-width width)
+					new-width
+					width)))))))
 	      (rows-on-front-page ()
 		"compute and return how many rows can be put on the front page, this will depend on the cell-size+padding
 		we start at (- page-height 101), move down by 5, then again by cell-size+padding and leave cell-size+padding*2 at the end of the rows, for page numbers and stuff."
@@ -310,7 +335,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 			    (t (other-page-rows (cdr rows) rows-per-page acc (append lacc (list row)) (+ height-acc height)))))
 		    acc))	      
 	      (draw-row (row dimensions x-start y-start)
-		"row is a list of cells, which maybe lists too, we use row height of 15 + 4 left padding + 4 for the line + 4 for the right padding"
+		"row is a list of cells, which maybe lists, arrays or string too"
 		(set-y-position y-start)
 		(set-x-position x-start)
 		(let ((height-of-row (get-row-height row))
@@ -322,65 +347,82 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		  ;; after drawing all cells, move down by the equivalent of the row height to the next row
 		  (set-y-position (- y-position (* height-of-row cell-size+padding)))))
 	      (draw-cell (cell cell-heights dimensions x-start y-start)
-		(if (listp cell)
-		    (progn (draw-subcells cell cell-heights dimensions x-start y-start)
-			   (set-x-position (+ x-position dimensions)) ;move to next cell
-			   )
-		    (progn (pdf:in-text-mode
-			     ;; the y-start position is the position of the separator above the cell, move 15+4 to the position the text is supposed to be
-			     (pdf:move-text (+ x-start (/ cell-padding 3)) (- y-start cell-size 1/3-of-padding)) ; add 4 and 4 for spacing
-			     (pdf:draw-text cell))
-			   (set-x-position (+ x-position dimensions)) ;move to the next cell
-			   )))	      
+		"can be a string, a non string array or a list"
+		(cond ((listp cell) (progn (draw-subcells cell cell-heights dimensions x-start y-start)
+					   (set-x-position (+ x-position dimensions)) ;move to next cell
+					   ))
+		      ((and (not (stringp cell)) (arrayp cell))
+		       (loop for i from 0 below (array-total-size cell)
+			     ;; draw all text below each other, moving down as required
+			     do (pdf:in-text-mode
+				  (pdf:move-text (+ x-start 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
+				  (pdf:draw-text (aref cell i))
+				  (set-y-position (- y-position cell-size+padding))))
+		       (set-x-position (+ x-position dimensions))
+		       (set-y-position y-start) ;move back to the y-start for next cell
+		       )
+		      (t (progn (pdf:in-text-mode
+				  ;; the y-start position is the position of the separator above the cell
+				  (pdf:move-text (+ x-start (/ cell-padding 3)) (- y-start cell-size 1/3-of-padding)) ; add 1/3-of-padding for spacing
+				  (pdf:draw-text cell))
+				(set-x-position (+ x-position dimensions)) ;move to the next cell
+				))))	      
 	      (draw-subcells (subcells heights dimensions x-start y-start)
 		"this is a function that takes a list of subcells, draws all of them, at the end, moves to the next cell and at top of the same row (y-start).
-                 when the subcell is a list, draw all the subcells with lines separating then move only down."
+                 when the subcell is a list, draw all the subcells with lines separating then move only down. if the subcell is an array do as above"
 		(if subcells
-		    (if (listp (car subcells))
-			(progn (let ((pos 1) ; start at one because we're comapring against length
-				     )
-				 (loop for cell in (car subcells) and height in (car heights)
-				       do (pdf:in-text-mode
-					    ;; see above
-					    (pdf:move-text (+ x-start 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
-					    (pdf:draw-text cell)
-					    (pdf:move-to x-start (- y-position (* (if (listp height) (reduce #'+ height) height) cell-size+padding)))   
-					    (pdf:line-to (+ x-start dimensions) (- y-position (* (if (listp height) (reduce #'+ height) height) cell-size+padding)))
-					    (pdf:stroke)
-					    (set-y-position (- y-position (* (if (listp height) (reduce #'+ height) height) cell-size+padding))))
-					  (incf pos)))
-			       (draw-subcells (cdr subcells) (cdr heights) dimensions x-start y-start))
-			(progn (pdf:in-text-mode
-				 ;; see draw-cell
-				 (pdf:move-text (+ x-start 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
-				 (pdf:draw-text (car subcells))
-				 (unless (null (cdr subcells))
-				   (let* ((height (if (listp (car heights))
-						      (reduce #'+ (mapcar (lambda (h) (if (listp h) (reduce #'+ h) h)) (car heights)))
-						      (car heights)))
-					  (y-stop (- y-position (* height cell-size+padding))))
-				     (pdf:move-to x-start y-stop)
-				     (pdf:line-to (+ x-start dimensions) y-stop)
-				     (pdf:stroke))))
-			       (set-y-position (- y-position (* (if (listp (car heights))
-								    (reduce #'+ (mapcar (lambda (h) (if (listp h) (reduce #'+ h) h)) (car heights)))
-								    (car heights))
-								cell-size+padding)))
-			       (draw-subcells (cdr subcells) (cdr heights) dimensions x-start y-start)))
+		    (cond ((listp (car subcells))
+			   (loop for cell in (car subcells) and height in (car heights)
+				 do (pdf:in-text-mode
+				      ;; see above
+				      (pdf:move-text (+ x-start 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
+				      (pdf:draw-text cell)
+				      (pdf:move-to x-start (- y-position (* (if (listp height) (reduce #'+ height) height) cell-size+padding)))   
+				      (pdf:line-to (+ x-start dimensions) (- y-position (* (if (listp height) (reduce #'+ height) height) cell-size+padding)))
+				      (pdf:stroke)
+				      (set-y-position (- y-position (* (if (listp height) (reduce #'+ height) height) cell-size+padding)))))
+			   (draw-subcells (cdr subcells) (cdr heights) dimensions x-start y-start))
+			  ((and (arrayp (car subcells)) (not (stringp (car subcells))))
+			   (loop for i from 0 below (array-total-size (car subcells))
+				 do (pdf:in-text-mode
+				      (pdf:move-text (+ x-start 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
+				      (pdf:draw-text (aref (car subcells) i))
+				      (set-y-position (- y-position cell-size+padding))))
+			   ;; since we move down after every line, just use the y-position as is
+			   (pdf:in-text-mode
+			     (pdf:move-to x-start y-position)   
+			     (pdf:line-to (+ x-start dimensions) y-position)
+			     (pdf:stroke))
+			   (draw-subcells (cdr subcells) (cdr heights) dimensions x-start y-start))
+			  (t (progn (pdf:in-text-mode
+				      ;; see draw-cell
+				      (pdf:move-text (+ x-start 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
+				      (pdf:draw-text (car subcells))
+				      (unless (null (cdr subcells))
+					(let* ((height (if (listp (car heights))
+							   (reduce #'+ (mapcar (lambda (h) (if (listp h) (reduce #'+ h) h)) (car heights)))
+							   (car heights)))
+					       (y-stop (- y-position (* height cell-size+padding))))
+					  (pdf:move-to x-start y-stop)
+					  (pdf:line-to (+ x-start dimensions) y-stop)
+					  (pdf:stroke))))
+				    (set-y-position (- y-position (* (if (listp (car heights))
+									 (reduce #'+ (mapcar (lambda (h) (if (listp h) (reduce #'+ h) h)) (car heights)))
+									 (car heights))
+								     cell-size+padding)))
+				    (draw-subcells (cdr subcells) (cdr heights) dimensions x-start y-start))))
 		    (set-y-position y-start)))
 	      (draw-column-separators (dimensions x-start y-start y-end)
-		"draw the vertical lines that separate columns separate the lines from the text by 2"
-		;; \<-4-><-text-><-4-><-line->\<-4-><-text-><-4-><-line->\
-		;; \<--------dimension------->\<--------dimension------->\
+		"draw the vertical lines that separate columns, the dimensions of each are already computed in dimensions"
 		(cond ((equal (length dimensions) 1))
-		      (t (set-x-position (+ x-start (car dimensions))) ; set the position at 4 right of the text in the current cell
+		      (t (set-x-position (+ x-start (car dimensions))) 
 			 (pdf:move-to x-position y-start)
 			 (pdf:line-to x-position y-end)
 			 (pdf:stroke)
 			 (draw-column-separators (cdr dimensions) x-position y-start y-end)
 			 )))
 	      (draw-row-separators (rows x-start x-end y-start)
-		"draw separators between the rows except the last one account for the row size (15) and the spacing (12)"
+		"draw separators between the rows except the last one, account for the row size and the padding (cell-size+padding)"
 		;; set the y-position to be at y-start
 		(set-y-position y-start)
 		(let ((pos 1))
@@ -394,7 +436,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 			(pdf:stroke))
 		      (incf pos))))))
        (let* ((dimensions-data (get-widths ,table-headings ,table-data))
-	      		       (x-max (apply #'+ dimensions-data)))
+	      (x-max (apply #'+ dimensions-data)))
 	 (pdf:with-document ()
 	   ;; since x-max has already been computed, find if the data can fit on a4 portrait width, then a4 landscape, then try a3 then a2.
 	   (cond ((< x-max 595) (setq *default-page-bounds* *a4-portrait-page-bounds*)) 
@@ -481,6 +523,24 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows*
 		  :table-title "Levels"
 		  :table-headings '("class" "stream" "subject" "papers")
 		  :table-data '(("s6" ("sciences" "arts") (("maths" "chemostry" "biology")) (("1" "2") ("1" "2" "3") ("1" "2" "3")))))))
+
+(defun test-array-table ()
+  (generate-pdf  (:file-path #p"~/common-lisp/school/array-table.pdf"
+		  :table-title "Levels"
+		  :table-headings '("class" "stream" "subject" "papers")
+		  :table-data '(("s6" #("sciences" "arts") (("maths" "chemostry" "biology")) (("1" "2") ("1" "2" "3") ("1" "2" "3")))))))
+
+(defun test-simple-array-table ()
+  (generate-pdf  (:file-path #p"~/common-lisp/school/s-array-table.pdf"
+		  :table-title "Levels"
+		  :table-headings '("class" "stream" "subject" "papers")
+		  :table-data '(("A level Biology" "A level" #("abdul lam") (#("Chemistry" "Biology")))))))
+
+(defun test-multiline-heading ()
+  (generate-pdf  (:file-path #p"~/common-lisp/school/multiline-heading.pdf"
+		  :table-title "Levels"
+		  :table-headings '(#("class a" "time") "stream" "subject" "papers")
+		  :table-data '((#("A level Biology" "b" "c") "A level" #("abdul lam") (#("Chemistry" "Biology")))))))
 
 (defun test-long-table ()
   (generate-pdf  (:file-path #p"~/common-lisp/school/long-table.pdf"

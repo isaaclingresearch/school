@@ -134,6 +134,7 @@
   )
 
 (defun process-department-info-for-pdf ()
+  "prepare data for export to a pdf, teachers and subjects are presented in an array to be in a single cell in the pdf."
   (let (acc
 	(department-info (get-department-info))
 	(teacher-info (get-teacher-info)))
@@ -148,8 +149,10 @@
 					      (when this-level
 						(when (member subject (cadr this-level) :test #'equal)
 						  (setq lacc `(,@lacc ,(format nil "~a ~a" (nth 2 teacher) (nth 1 teacher)))))))))
-				 (remove-duplicates lacc))
-			       (list (parse (nth 3 department)))))))
+				 (let ((final-acc (remove-duplicates lacc)))
+				   (make-array (length final-acc) :initial-contents final-acc)))
+			       (let ((subjects (parse (nth 3 department))))
+				 (list (make-array (length subjects) :initial-contents subjects)))))))
     acc))
 
 (defun department-menu (menu)
