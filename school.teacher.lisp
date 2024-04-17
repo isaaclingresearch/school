@@ -1,4 +1,3 @@
-
 (defpackage :school.teacher
   (:use :cl :sqlite :ltk :cl-pdf :str :school.ltk :school.pdf :school :tktable :jonathan)
   (:shadow cl-pdf:image cl-pdf:make-image cl-pdf:font-metrics cl-pdf:bbox cl-pdf:name cl-pdf:scale str:repeat)

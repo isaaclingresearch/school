@@ -43,7 +43,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows-1
 	 (mapcar (lambda (cell)
 		   (cond ((listp cell)
 			  `(,(cell-heights (car cell)) ,@(cell-heights (cdr cell))))
-			 ((and (arrayp cell) (not (stringp cell))) (array-total-size cell))
+			 ((and (arrayp cell) (not (stringp cell))) (list (array-total-size cell)))
 			 (t 1)))
 		 row))
 	((and (arrayp row) (not (stringp row))) (list (array-total-size row)))
@@ -80,14 +80,29 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows-1
 	  (setq acc (append (list current-data) acc))))
     (if (equal 1 first)
 	(setq acc `(,(car acc) ,@acc))
-	(setq acc `(,(append (if (listp first) first (list first)) (car acc)) ,@acc)))
+	;; for all non array, the first value is 1, if it is a list, then the first value is an array
+	;; if it is an array, first collect all the other cells, then get the second one's value, sum them and compare
+	;; against the value in the list, since it is the length of the array, of less than sum of the total, return the total
+	;; otherwise return the total dimensions of the array. subarrays are not affected by the introduction of arrays into the
+	;; structure of the data.
+	(labels ((reduce-cell (cell)
+		   "check if a cell is reducible, or a reducible listp, which it should be either of those or an integer"
+		   (cond ((integerp cell) cell)
+			 ((summablep cell) (reduce #'+ cell))
+			 ((summable-listp cell) (reduce #'+ (mapcar (lambda (subcell) (reduce #'+ subcell)) cell))))))
+	  (let ((cdr-sum (if (listp (car acc))
+			     (reduce #'+ (mapcar #'reduce-cell (car acc)))
+			     (car acc))))
+	    (if (> (car first) cdr-sum)
+		(setq acc `(,@first ,@acc))
+		(setq acc `(,(car acc) ,@acc))))))
     acc))
 
 (defun reduce-subcell-heights (heights)
   "add subcell heights"
   (labels ((reduce-cell (cell)
 	     (cond ((equal 1 cell) 1)
-		  ; ((integerp cell) cell)
+		   ((integerp cell) cell)
 		   ((summable-listp cell)
 		    (mapcar (lambda (data) (reduce #'+ data)) cell))
 		   ((not (summable-listp cell))
@@ -124,7 +139,8 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows-1
       1))
 
 (defun summable-listp (arg)
-  (not (member nil (mapcar #'summablep arg))))
+  (when (listp arg)
+    (not (member nil (mapcar #'summablep arg)))))
 
 (defun summablep (arg)
   (if (listp arg)
@@ -164,6 +180,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows-1
      (labels ((set-y-position (new-postion) (setf y-position new-postion))
 	      (set-x-position (new-postion) (setf x-position new-postion))
 	      (draw-table (rows dimensions-data &key other-page)
+		(print dimensions-data)
 		(let* ((number-of-rows (get-row-heights rows))
 		       (x-start 0) 
 		       (y-start 0) ; the y-position at which table starts
@@ -172,7 +189,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows-1
 		       (x-end 0)
 		       (y-end 0)
 		       (x-max (apply #'+ dimensions-data))
-		       (y-max (* (1+ number-of-rows) cell-size+padding)) ; add one row for the table titles
+		       (y-max (* (+ (get-row-height ,table-headings) number-of-rows) cell-size+padding)) ; add the height of the table heaings
 		       )
 		  ;; table title, only show for first page
 		  (unless other-page
@@ -182,7 +199,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows-1
 		      (pdf:draw-centered-text (/ page-width 2) y-position ,table-title helvetica 20.0)
 		      (set-y-position (- y-position 5)) ; move the y-position 5 below the title, this is the start of the table
 		      ))
-		  (setq y-start y-position)	      ; see line above
+		  (setq y-start y-position) ; see line above
 		  
 		  
 		  ;; center the table, get any remaining space on x, substract the total, divide by 2
@@ -195,8 +212,9 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows-1
 		  (pdf:move-to x-start y-position)
 		  (pdf:line-to x-end y-position)
 		  (pdf:stroke)
-		  ;; move 15+12 below the starting y-position for the headings, this puts y at the lower separator of the headers
-		  (set-y-position (- y-position cell-size+padding))
+		  ;; get the heights of the heading array and use it to draw the lower separator as headings may occupy more than one line,
+		  ;; then multiply that with the cell-size+padding
+		  (set-y-position (- y-position (* (get-row-height ,table-headings) cell-size+padding)))
 		  (pdf:move-to x-start y-position)
 		  (pdf:line-to x-end y-position)
 		  (pdf:stroke)
@@ -220,18 +238,20 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows-1
 		  (pdf:set-font helvetica 11.0)
 		  (set-x-position x-start) ; start at the beginning of the table
 		  ;; set y to the upper border of the table
-		  (set-y-position (+ y-position cell-size+padding))
+		  (set-y-position (+ y-position (* (get-row-height ,table-headings) cell-size+padding)))
 		  ;; we use a closure because headings maybe duplicated, we can't go wrong while counting
-		  (let ((local-y y-position))
+		  (let ((local-y y-position)) ; local-y will help us start from the upper starting y in case we iterate through a multiline heading
 		    (loop for heading in ,table-headings and row-width in dimensions-data
 			  do (cond ((and (not (stringp heading)) (arrayp heading))
-				    (pdf:in-text-mode
-				      (loop for i from 0 below (array-total-size heading)
-					    do (pdf:move-text (+ x-position 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
+				    ;; the above clause means we have found a multiline heading,
+				    ;; iterate through it and then return to the upper starting point, local-y
+				    (loop for i from 0 below (array-total-size heading)
+					  do (pdf:in-text-mode (pdf:move-text (+ x-position 1/3-of-padding) (- y-position cell-size 1/3-of-padding))
 					       (pdf:draw-text (aref heading i))
-					       (set-y-position (- y-position cell-size+padding)))
-				      (set-x-position (+ x-position row-width))
-				      (set-y-position local-y)))
+					       (print (aref heading i))
+					       (set-y-position (- y-position cell-size+padding))))
+				    (set-x-position (+ x-position row-width))
+				    (set-y-position local-y))
 				   (t (pdf:in-text-mode
 					;; \<-1/3-><-text-><-1/3-><-line- = 1/3>\
 					;; \<----------width------------------->\
@@ -243,7 +263,7 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows-1
 		  ;; data
 		  (pdf:set-font helvetica 10.0)
 		  ;; set y at the lower border of the table headers
-		  (set-y-position (- y-position cell-size+padding))
+		  (set-y-position (- y-position (* (get-row-height ,table-headings) cell-size+padding)))
 		  ;; iterate over all the data provided
 		  (dolist (row rows)
 		    (draw-row row dimensions-data x-start y-position))
@@ -423,18 +443,16 @@ first subcell in the next cell. if this is a bit confusing, look at *test-rows-1
 			 )))
 	      (draw-row-separators (rows x-start x-end y-start)
 		"draw separators between the rows except the last one, account for the row size and the padding (cell-size+padding)"
-		;; set the y-position to be at y-start
-		(set-y-position y-start)
-		(let ((pos 1))
-		  (dolist (row rows)
-		    (let* ((row-len (get-row-height row))
-			   (height (* row-len cell-size+padding)))
-		      (set-y-position (- y-position height))
-		      (pdf:in-text-mode
-			(pdf:move-to x-start y-position)
-			(pdf:line-to x-end y-position)
-			(pdf:stroke))
-		      (incf pos))))))
+		;; set the y-position to be at y-start, also account for the height of the headings, start at the lower border of the headings
+		(set-y-position (- y-start (* (get-row-height ,table-headings))))
+		(loop for row in (butlast rows)
+		      do (let* ((row-len (get-row-height row))
+				(height (* row-len cell-size+padding)))
+			   (set-y-position (- y-position height))
+			   (pdf:in-text-mode
+			     (pdf:move-to x-start y-position)
+			     (pdf:line-to x-end y-position)
+			     (pdf:stroke))))))
        (let* ((dimensions-data (get-widths ,table-headings ,table-data))
 	      (x-max (apply #'+ dimensions-data)))
 	 (pdf:with-document ()
