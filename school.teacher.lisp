@@ -40,8 +40,14 @@
 	    (execute-to-list db "select * from teacher_info where id = ?" id)
 	    (execute-to-list db "select * from teacher_info"))))
 
+(defun get-level-teachers (level-name)
+  "get all teachers who teach a particular level"
+  (let ((teacher-info (get-teacher-info)))
+    (remove-if-not (lambda (info)
+		 (member level-name (parse (nth 14 info)) :key #'car :test #'equal))
+	       teacher-info)))
 (defun start ()
-  "start the info application, try to create the tables, bind the error to continue execution if the tables are already present. enable foreign key support on the database"
+  "start the teacher application, try to create the tables, bind the error to continue execution if the tables are already present. enable foreign key support on the database"
   (conn
     (execute-non-query db "pragma foreign_keys = on") 
     (handler-case

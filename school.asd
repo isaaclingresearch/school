@@ -16,6 +16,7 @@
 	       (:file "school.pdf")
 	       (:file "school.info")
 	       (:file "school.teacher")
+	       (:file "school.timetable")
 	       )
   :build-operation "program-op" ;; leave as is
   :build-pathname "school-info"
