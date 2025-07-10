@@ -1,1 +1,2 @@
-A desktop application to manage the workflows of secondary schools in Uganda.
+# School
+*A desktop application to manage the workflows of secondary schools in Uganda.*
